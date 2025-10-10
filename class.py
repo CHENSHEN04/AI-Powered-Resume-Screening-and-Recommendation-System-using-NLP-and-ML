@@ -1,3 +1,17 @@
+    def preprocess_data(self):
+        # Drop rows with missing values
+        self.df.dropna(subset=['Resume', 'Category'], inplace=True)
+        
+        # Clean text data
+        self.df['Resume'] = self.df['Resume'].apply(lambda x: re.sub(r'\s+', ' ', x).strip())
+        
+        # Encode labels
+        self.df['Category'] = self.df['Category'].astype('category')
+        self.df['Label'] = self.df['Category'].cat.codes
+        
+        print("Data preprocessing completed.")
+        return self.df
+
 # Train and evaluate multiple models
     # Logistic Regression
     def train_logistic_regression(self):
