@@ -1,82 +1,48 @@
-import huggingface_hub 
-from huggingface_hub import HfApi # For dataset access
-from datasets import load_dataset
+# train.py
 import pandas as pd
-import re
-
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.svm import LinearSVC
-from sklearn.metrics import accuracy_score, classification_report
-import matplotlib.pyplot as plt
-import numpy as np
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import joblib
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import classification_report, accuracy_score
+from data_loader import load_resume_data, extract_user_resumes
+from preprocess import clean_text, heuristic_label
+from features import train_tfidf
+import os
 
-# HfApi().create_repo(repo_id="username/my_dataset", repo_type="dataset")
-# Load dataset
-class ResumeDataProcessor:
-    def __init__(self, use_hf=True):
-        self.use_hf = use_hf
-        self.df = None
+MODEL_DIR = "models"
+os.makedirs(MODEL_DIR, exist_ok=True)
 
-    def load_data(self):
-        if self.use_hf:
-            # Login using e.g. `huggingface-cli login` to access this dataset
-            ds = load_dataset("MikePfunk28/resume-training-dataset")
-            self.df = ds['train'].to_pandas()
-            print(f"Dataset loaded from Hugging Face with {len(self.df)} records.")
-        else:
-            # Login using e.g. `huggingface-cli login` to access this dataset
-            self.df = pd.read_json("hf://datasets/MikePfunk28/resume-training-dataset/training_data.jsonl", lines=True)            
-            print(f"Dataset loaded locally with {len(self.df)} records.")
-        return self.df
-    
-    def clean_text(self, text):
-        """Basic text cleaning: remove special chars, extra spaces, etc."""
-        if not isinstance(text, str):
-            return ""
-        text = re.sub(r'\n+', ' ', text)
-        text = re.sub(r'[^a-zA-Z0-9.,;:/()&%$#@!\'\" -]', ' ', text)
-        text = re.sub(r'\s+', ' ', text).strip()
-        return text
+def build_training_df():
+    df = load_resume_data()
+    # extract user messages as resume_text candidates
+    resumes = extract_user_resumes(df)
+    resumes['clean'] = resumes['resume_text'].fillna("").apply(clean_text)
+    resumes['label'] = resumes['clean'].apply(lambda t: heuristic_label(t, min_tokens=80, min_skills=1))
+    # Remove empty
+    resumes = resumes[resumes['clean'].str.strip() != ""].reset_index(drop=True)
+    return resumes
 
-    def preprocess_data(self):
-        """Apply cleaning and label encoding"""
-        if self.df is None:
-            raise ValueError("Dataset not loaded yet. Run load_data() first.")
+def train_and_save():
+    df = build_training_df()
+    print("Training samples:", len(df))
+    corpus = df['clean'].tolist()
+    labels = df['label'].values
 
-        # Drop missing values
-        self.df.dropna(subset=['Resume', 'Category'], inplace=True)
+    tfidf, X = train_tfidf(corpus, max_features=8000)
 
-        # Apply text cleaning
-        self.df['Resume'] = self.df['Resume'].apply(self.clean_text)
+    X_train, X_test, y_train, y_test = train_test_split(X, labels, test_size=0.2, random_state=42, stratify=labels)
 
-        # Encode job categories as numeric labels
-        self.df['Category'] = self.df['Category'].astype('category')
-        self.df['Label'] = self.df['Category'].cat.codes
+    clf = LogisticRegression(max_iter=1000)
+    clf.fit(X_train, y_train)
 
-        print("✅ Data preprocessing completed.")
-        return self.df
+    y_pred = clf.predict(X_test)
+    print("Accuracy:", accuracy_score(y_test, y_pred))
+    print(classification_report(y_test, y_pred))
 
-    def summarize_dataset(self):
-        """Print and visualize dataset summary"""
-        if self.df is None:
-            raise ValueError("Dataset not loaded yet. Run load_data() first.")
+    # Save
+    joblib.dump(tfidf, f"{MODEL_DIR}/tfidf.joblib")
+    joblib.dump(clf, f"{MODEL_DIR}/clf.joblib")
+    print("Saved models to", MODEL_DIR)
 
-        print(f"\n Total records: {len(self.df)}")
-        print(f"Unique categories: {self.df['Category'].nunique()}\n")
-
-        print("Category distribution:")
-        print(self.df['Category'].value_counts())
-
-        # Optional bar chart visualization
-        plt.figure(figsize=(10,6))
-        self.df['Category'].value_counts().plot(kind='bar')
-        plt.title("Number of Resumes per Job Category")
-        plt.xlabel("Category")
-        plt.ylabel("Count")
-        plt.tight_layout()
-        plt.show()
+if __name__ == "__main__":
+    train_and_save()
