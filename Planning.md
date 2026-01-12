@@ -47,26 +47,25 @@ Content: Visual resumes, scanned documents, designed layouts
 Use cases: Training OCR models, layout analysis, visual design evaluation
 
 - data fields
-For text data:
-- role: The speaker in the conversation ("system", "user", or "assistant")
-- content: The message content, which may include:
-    - Full resume text
-    - Specific sections (experience, education, skills)
-    - Critique and improvement suggestions
-    - Career advice
+For text data:  
+    - role: The speaker in the conversation ("system", "user", or "assistant")
+    - content: The message content, which may include:
+        - Full resume text
+        - Specific sections (experience, education, skills)
+        - Critique and improvement suggestions
+        - Career advice
 For image data:
-- image: Resume image file
-- text: Extracted or annotated text from the image
-- layout: Information about resume structure and design
-- metadata: Image properties, format type, visual elements
+    - image: Resume image file
+    - text: Extracted or annotated text from the image
+    - layout: Information about resume structure and design
+    - metadata: Image properties, format type, visual elements
 
 - programming languages detected
 The dataset includes mentions of various programming languages and technologies commonly found in technical resumes:
-
-Languages: Python, Java, JavaScript, C#, C++, SQL, HTML/CSS, PHP, Ruby, Go, Rust, TypeScript
-Frameworks: React, Angular, Vue, Django, Flask, Spring, .NET, Node.js
-Tools: Docker, Kubernetes, AWS, Azure, GCP, Terraform, Git, Jenkins
-Databases: MySQL, PostgreSQL, MongoDB, Oracle, Redis
+    - Languages: Python, Java, JavaScript, C#, C++, SQL, HTML/CSS, PHP, Ruby, Go, Rust, TypeScript
+    - Frameworks: React, Angular, Vue, Django, Flask, Spring, .NET, Node.js
+    - Tools: Docker, Kubernetes, AWS, Azure, GCP, Terraform, Git, Jenkins
+    - Databases: MySQL, PostgreSQL, MongoDB, Oracle, Redis
 
 - dataset creation
     - Curation Rationale
@@ -134,15 +133,17 @@ pipe = pipeline("text-generation", model="kiritps/resume-ai-assistant")
 from transformers import AutoModel
 model = AutoModel.from_pretrained("kiritps/resume-ai-assistant", dtype="auto")
 - A specialized AI assistant fine-tuned for resume writing, career guidance, and job search support based on GPT-Neo 1.3B.
-- This model is a fine-tuned for specifically optimized for resume and career-related tasks. Using LoRA (Low-Rank Adaptation) fine-tuning, it provides professional guidance on resume writing, cover letters, interview preparation, and career development while maintaining the base model's strong language generation capabilities.
+- This model is a fine-tuned for specifically optimized for resume and career-related tasks. Using LoRA (Low-Rank Adaptation) fine-tuning, it provides professional guidance on resume writing, cover letters, interview preparation, and career development while maintaining the base model's strong language generation capabilities:
     - Developed by: KIRIT P S
     - Model type: Causal Language Model (Decoder)
     - Language(s) (NLP): English
     - License: Apache 2.0
     - Specialized for: Resume writing, career guidance, job search assistance
-Model Sources
-- Training Dataset: MikePfunk28/resume-training-dataset
-- Fine-tuning Method: LoRA (Low-Rank Adaptation)
+
+
+- Model Sources
+    - Training Dataset: MikePfunk28/resume-training-dataset
+    - Fine-tuning Method: LoRA (Low-Rank Adaptation)
 
 - Direct Use
     - The model is designed for direct use in career-related applications:
@@ -187,96 +188,97 @@ Model Sources
         - Verify information against current industry standards and job requirements
         - Consider cultural context and local job market practices
         - Use as a starting point rather than a final solution for career documents
-Training Data
-The model was fine-tuned on the MikePfunk28/resume-training-dataset, which contains:
-- Dataset Size: 22,855 conversational examples
-- Format: Human-Assistant dialogue pairs focused on resume and career topics
-- Content: Professional advice on resume writing, interview preparation, career development, and job search strategies
-- Language: English
-- Quality: Curated dataset with professional career guidance content
 
-Training Procedure
-Preprocessing
-- Text sequences were formatted in conversational style (Human/Assistant pairs)
-- Sequences truncated to maximum length of 512 tokens
-- Padding tokens properly masked in loss calculation
-- Data processed using 8 CPU workers for parallel processing
 
-Training Hyperparameters
-- Fine-tuning Method: LoRA (Low-Rank Adaptation)
-- LoRA Rank: 32
-- LoRA Alpha: 64
-- LoRA Dropout: 0.1   
-- Target Modules: c_attn, c_proj, c_fc
-- Trainable Parameters: 15,728,640 (1.18% of total parameters)
-- Training Regime: fp16 mixed precision
-- Batch Size: 7 per device
-- Gradient Accumulation Steps: 1
-- Learning Rate: 2e-4
-- Weight Decay: 0.01
-- Warmup Steps: 200
-- Number of Epochs: 3
-- Optimizer: AdamW
-- Sequence Length: 512 tokens
+- Training Data
+    - The model was fine-tuned on the MikePfunk28/resume-training-dataset, which contains:
+        - Dataset Size: 22,855 conversational examples
+        - Format: Human-Assistant dialogue pairs focused on resume and career topics
+        - Content: Professional advice on resume writing, interview preparation, career development, and job search strategies
+        - Language: English
+    - Quality: Curated dataset with professional career guidance content
 
-Speeds, Sizes, Times
-- Training Time: Approximately 8-12 hours
-- Hardware: Single GPU (12GB VRAM)
-- Model Size: ~2.6GB (including LoRA adapters)
-- Peak GPU Memory Usage: ~10GB during training
-- Training Examples: 22,855 processed examples
+- Training Procedure
+    - Preprocessing
+        - Text sequences were formatted in conversational style (Human/Assistant pairs)
+        - Sequences truncated to maximum length of 512 tokens
+        - Padding tokens properly masked in loss calculation
+        - Data processed using 8 CPU workers for parallel processing
 
-Evaluation
-- Testing Data, Factors & Metrics
-- Testing Data
-The model was evaluated using held-out examples from the training dataset and manual quality assessment of generated responses.
+- Training Hyperparameters
+    - Fine-tuning Method: LoRA (Low-Rank Adaptation)
+    - LoRA Rank: 32
+    - LoRA Alpha: 64
+    - LoRA Dropout: 0.1   
+    - Target Modules: c_attn, c_proj, c_fc
+    - Trainable Parameters: 15,728,640 (1.18% of total parameters)
+    - Training Regime: fp16 mixed precision
+    - Batch Size: 7 per device
+    - Gradient Accumulation Steps: 1
+    - Learning Rate: 2e-4
+    - Weight Decay: 0.01
+    - Warmup Steps: 200
+    - Number of Epochs: 3
+    - Optimizer: AdamW
+    - Sequence Length: 512 tokens
 
-Factors
-- Evaluation considered:
+- Speeds, Sizes, Times
+    - Training Time: Approximately 8-12 hours
+    - Hardware: Single GPU (12GB VRAM)
+    - Model Size: ~2.6GB (including LoRA adapters)
+    - Peak GPU Memory Usage: ~10GB during training
+    - Training Examples: 22,855 processed examples
 
-- Response Relevance: How well responses address the specific career question
-- Professional Tone: Appropriateness of language and style for professional context
-- Actionable Advice: Practical value of the guidance provided
-- Factual Accuracy: Correctness of career advice and industry practices
+- Evaluation
+    - Testing Data, Factors & Metrics
+    - Testing Data
+    The model was evaluated using held-out examples from the training dataset and manual quality assessment of generated responses.
 
-Metrics
-- Perplexity: Model's uncertainty in predicting next tokens
-- Response Quality: Manual evaluation of coherence and usefulness
-- Domain Relevance: Percentage of responses that stay on topic
-- Professional Appropriateness: Evaluation of tone and content suitability
+- Factors
+    - Evaluation considered:
+    - Response Relevance: How well responses address the specific career question
+    - Professional Tone: Appropriateness of language and style for professional context
+    - Actionable Advice: Practical value of the guidance provided
+    - Factual Accuracy: Correctness of career advice and industry practices
 
-Results
+- Metrics
+    - Perplexity: Model's uncertainty in predicting next tokens
+    - Response Quality: Manual evaluation of coherence and usefulness
+    - Domain Relevance: Percentage of responses that stay on topic
+    - Professional Appropriateness: Evaluation of tone and content suitability
+
+- Results
 The fine-tuned model demonstrates:
+    - High domain specificity: Consistently provides career-focused responses
+    - Professional tone: Maintains appropriate formality and expertise
+    - Actionable guidance: Offers specific, implementable advice
+    - Context awareness: Adapts responses based on user's career stage and field
 
-- High domain specificity: Consistently provides career-focused responses
-- Professional tone: Maintains appropriate formality and expertise
-- Actionable guidance: Offers specific, implementable advice
-- Context awareness: Adapts responses based on user's career stage and field
-Summary
+- Summary
 The resume-ai-assistant model successfully specializes for the career-related tasks, showing strong performance in generating professional, relevant, and actionable career guidance while maintaining fluent language generation capabilities.
 
-Model Examination
+- Model Examination
 The model's attention patterns show increased focus on career-related keywords and professional terminology. LoRA adaptation successfully redirected the model's outputs toward career-specific domains without degrading general language capabilities.
 
-Environmental Impact
-Carbon emissions were minimized through efficient LoRA fine-tuning, which trains only 1.18% of parameters compared to full fine-tuning.
-- Hardware Type: Single NVIDIA GPU (12GB)
-- Hours used: ~10 hours
-- Cloud Provider: Local training setup
-- Compute Region: Not applicable
-- Carbon Emitted: Estimated <5 kg CO2eq (significantly lower than full model training)
+- Environmental Impact
+    - Carbon emissions were minimized through efficient LoRA fine-tuning, which trains only 1.18% of parameters compared to full fine-tuning.
+    - Hardware Type: Single NVIDIA GPU (12GB)
+    - Hours used: ~10 hours
+    - Cloud Provider: Local training setup
+    - Compute Region: Not applicable
+    - Carbon Emitted: Estimated <5 kg CO2eq (significantly lower than full model training)
 
-Technical Specifications
-- Model Architecture and Objective
-- Fine-tuning Method: LoRA (Low-Rank Adaptation)
-- Objective: Causal language modeling with career domain specialization
-- Parameter Count: 1.33B total parameters, 15.7M trainable
-- Attention Heads: 16 per layer
-- Hidden Size: 2048
-- Vocabulary Size: 50,257 tokens
+- Technical Specifications
+    - Model Architecture and Objective
+    - Fine-tuning Method: LoRA (Low-Rank Adaptation)
+    - Objective: Causal language modeling with career domain specialization
+    - Parameter Count: 1.33B total parameters, 15.7M trainable
+    - Attention Heads: 16 per layer
+    - Hidden Size: 2048
+    - Vocabulary Size: 50,257 tokens
 
-Compute Infrastructure
-- Hardware
+- Compute Infrastructure
+    - Hardware
     - GPU: Single 12GB GPU (optimal for LoRA fine-tuning)
     - CPU: Multi-core processor for data loading (8 workers)
     - RAM: 64GB system memory
@@ -288,18 +290,18 @@ Compute Infrastructure
     - Precision: FP16 mixed precision training
     - Optimization: AdamW optimizer with linear warmup
 
-Citation
-BibTeX:
+- Citation
+    - BibTeX:
+    @misc{resume-ai-assistant-2025, title={Resume AI Assistant: A Fine-tuned GPT-Neo 1.3B for Career Guidance}, author={Individual Developer}, year={2025}, publisher={Hugging Face Model Hub}, url={https://huggingface.co/kiritps/resume-ai-assistant} }
 
-@misc{resume-ai-assistant-2025, title={Resume AI Assistant: A Fine-tuned GPT-Neo 1.3B for Career Guidance}, author={Individual Developer}, year={2025}, publisher={Hugging Face Model Hub}, url={https://huggingface.co/kiritps/resume-ai-assistant} }
+    - APA: Individual Developer. (2025). Resume AI Assistant: A Fine-tuned GPT-Neo 1.3B for Career Guidance. Hugging Face Model Hub. https://huggingface.co/kiritps/resume-ai-assistant
 
-APA: Individual Developer. (2025). Resume AI Assistant: A Fine-tuned GPT-Neo 1.3B for Career Guidance. Hugging Face Model Hub. https://huggingface.co/kiritps/resume-ai-assistant
+- Glossary
+    - LoRA: Low-Rank Adaptation - A parameter-efficient fine-tuning method
+    - PEFT: Parameter Efficient Fine-Tuning - Training only a subset of model parameters
+    - Causal LM: Causal Language Model - Predicts next token given previous context
+    - fp16: 16-bit floating point precision for memory efficiency
 
-Glossary
-LoRA: Low-Rank Adaptation - A parameter-efficient fine-tuning method
-PEFT: Parameter Efficient Fine-Tuning - Training only a subset of model parameters
-Causal LM: Causal Language Model - Predicts next token given previous context
-fp16: 16-bit floating point precision for memory efficiency
 > [!currentproposal] -(Input → Processing → Output)
 1. Input layer 
     - ingesting and preprocessing unstructured resume information using parsing methods which standardize multiple formatting styles
