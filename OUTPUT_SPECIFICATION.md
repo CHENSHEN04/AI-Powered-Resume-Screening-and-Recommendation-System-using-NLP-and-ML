@@ -6,6 +6,35 @@
 
 ---
 
+## Table of Contents
+
+1. [Executive Summary](#1-executive-summary)
+2. [System Architecture](#2-system-architecture)
+   - 2.1 Three-Layer Architecture
+   - 2.2 Model Decision Logic
+   - 2.3 Training Data & Model Pipeline
+3. [Data Architecture](#3-data-architecture)
+   - 3.1 Storage Model & Database Schema
+   - 3.2 Skill Rating System
+   - 3.3 Section Extraction Priority
+   - 3.4 Job Category Management
+4. [User Experience Flow](#4-user-experience-flow)
+5. [Edge Case Handling](#5-edge-case-handling)
+6. [Technical Implementation](#6-technical-implementation)
+   - 6.1 Deployment Stack & Constraints
+   - 6.2 Market Standards Database
+   - 6.3 Learning Resources
+   - 6.4 Logging & Monitoring
+   - 6.5 Error Handling
+   - 6.6 Test Strategy
+7. [Evaluation Metrics](#7-evaluation-metrics)
+8. [Scope Prioritization (MoSCoW)](#8-scope-prioritization-moscow)
+9. [The "One Thing" That Must Work](#9-the-one-thing-that-must-work)
+10. [Future Roadmap](#10-future-roadmap-thesis-appendix)
+11. [Appendices](#appendix-a-technology-stack-summary)
+
+---
+
 ## 1. Executive Summary
 
 ### 1.1 Project Vision
@@ -86,6 +115,194 @@ A **hybrid resume screening and career preparation support system** that combine
 2. **Silver Standard**: TF-IDF/SVM only (if BERT fails)
 3. **Bronze**: Basic parsed data (Name, Skills, Education)
 4. UI shows "Refresh Full Analysis" button when degraded
+
+### 2.3 Training Data & Model Pipeline
+
+#### 2.3.1 Training Dataset
+
+**Source**: [MikePfunk28/resume-training-dataset](https://huggingface.co/datasets/MikePfunk28/resume-training-dataset)
+
+| Property | Value |
+|----------|-------|
+| **Samples** | 22,855 resume conversation pairs |
+| **Format** | JSONL (role/content pairs) |
+| **Content** | Resume critiques, improvement suggestions, career advice |
+| **License** | MIT |
+
+**Dataset Structure:**
+```json
+[
+  {"role": "system", "content": "You are an expert resume assistant..."},
+  {"role": "user", "content": "Critique this resume: [resume content]"},
+  {"role": "assistant", "content": "This resume could benefit from..."}
+]
+```
+
+**How the Dataset is Used:**
+
+| Purpose | Usage |
+|---------|-------|
+| **Train TF-IDF Vectorizer** | Extract resume text from `user` role to build vocabulary |
+| **Train SVM Classifier** | Label resumes by job category for classification |
+| **Skill Pattern Extraction** | Identify common skills mentioned across resumes |
+| **Validation Set** | Hold out 20% for testing parsing & classification accuracy |
+
+> **Note**: The fine-tuned model [kiritps/resume-ai-assistant](https://huggingface.co/kiritps/resume-ai-assistant) (2.6GB GPT-Neo) is NOT used at runtime due to memory constraints. We use the lightweight dataset approach instead.
+
+#### 2.3.2 Training Pipeline
+
+```python
+# scripts/train_models.py
+# Run BEFORE deployment to generate .pkl files
+
+import pandas as pd
+import pickle
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.svm import SVC
+from sklearn.model_selection import train_test_split
+from datasets import load_dataset
+
+def load_resume_dataset():
+    """Load and preprocess the HuggingFace dataset."""
+    dataset = load_dataset("MikePfunk28/resume-training-dataset")
+    
+    resumes = []
+    for item in dataset['train']:
+        # Extract resume text from user messages
+        for msg in item['messages']:
+            if msg['role'] == 'user' and 'resume' in msg['content'].lower():
+                resumes.append({
+                    'text': msg['content'],
+                    'category': extract_job_category(msg['content'])  # Custom function
+                })
+    
+    return pd.DataFrame(resumes)
+
+def train_tfidf_svm(df):
+    """Train TF-IDF vectorizer and SVM classifier."""
+    
+    # Split data
+    X_train, X_test, y_train, y_test = train_test_split(
+        df['text'], df['category'], 
+        test_size=0.2, random_state=42
+    )
+    
+    # Train TF-IDF
+    tfidf = TfidfVectorizer(
+        max_features=5000,
+        ngram_range=(1, 2),
+        stop_words='english'
+    )
+    X_train_tfidf = tfidf.fit_transform(X_train)
+    X_test_tfidf = tfidf.transform(X_test)
+    
+    # Train SVM
+    svm = SVC(kernel='linear', probability=True)
+    svm.fit(X_train_tfidf, y_train)
+    
+    # Evaluate
+    accuracy = svm.score(X_test_tfidf, y_test)
+    print(f"Test Accuracy: {accuracy:.2%}")
+    
+    # Save models
+    with open('models/tfidf_vectorizer.pkl', 'wb') as f:
+        pickle.dump(tfidf, f)
+    
+    with open('models/svm_classifier.pkl', 'wb') as f:
+        pickle.dump(svm, f)
+    
+    return tfidf, svm, accuracy
+
+if __name__ == "__main__":
+    df = load_resume_dataset()
+    train_tfidf_svm(df)
+```
+
+**Training Output Files:**
+```
+models/
+├── tfidf_vectorizer.pkl    # ~5-10 MB (vocabulary + weights)
+├── svm_classifier.pkl      # ~10-20 MB (trained classifier)
+└── training_metrics.json   # Accuracy, F1, confusion matrix
+```
+
+#### 2.3.3 Runtime Model Loading
+
+```python
+# utils/model_loader.py
+# Used in production Streamlit app
+
+import pickle
+import streamlit as st
+from sentence_transformers import SentenceTransformer
+
+@st.cache_resource(show_spinner="Loading classification models...")
+def load_classification_models():
+    """Load pre-trained TF-IDF and SVM from pickle files."""
+    with open('models/tfidf_vectorizer.pkl', 'rb') as f:
+        tfidf = pickle.load(f)
+    
+    with open('models/svm_classifier.pkl', 'rb') as f:
+        svm = pickle.load(f)
+    
+    return tfidf, svm
+
+@st.cache_resource(show_spinner="Loading semantic model...")
+def load_embedding_model():
+    """Load sentence transformer for semantic similarity."""
+    return SentenceTransformer('all-MiniLM-L6-v2')
+
+@st.cache_resource
+def load_spacy_model():
+    """Load spaCy NER model."""
+    import spacy
+    try:
+        return spacy.load("en_core_web_sm")
+    except OSError:
+        import subprocess
+        subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
+        return spacy.load("en_core_web_sm")
+
+def classify_resume(text: str) -> dict:
+    """Classify resume using hybrid TF-IDF/SVM + BERT approach."""
+    tfidf, svm = load_classification_models()
+    embedding_model = load_embedding_model()
+    
+    # Step 1: TF-IDF/SVM fast classification
+    text_tfidf = tfidf.transform([text])
+    svm_probs = svm.predict_proba(text_tfidf)[0]
+    svm_top3 = sorted(
+        zip(svm.classes_, svm_probs), 
+        key=lambda x: x[1], 
+        reverse=True
+    )[:3]
+    
+    # Step 2: BERT semantic similarity for refinement
+    resume_embedding = embedding_model.encode(text)
+    # Compare with job category embeddings...
+    
+    return {
+        "svm_predictions": svm_top3,
+        "bert_similarity": {...},
+        "combined_score": {...}
+    }
+```
+
+**Memory Footprint at Runtime:**
+```
+┌────────────────────────────────────────────┐
+│         RUNTIME MEMORY USAGE               │
+├────────────────────────────────────────────┤
+│ Base Streamlit + Python:     ~350 MB       │
+│ spaCy en_core_web_sm:        ~ 12 MB       │
+│ all-MiniLM-L6-v2:            ~ 90 MB       │
+│ TF-IDF vectorizer (.pkl):    ~ 10 MB       │
+│ SVM classifier (.pkl):       ~ 20 MB       │
+│ ────────────────────────────────────       │
+│ Total:                       ~482 MB       │
+│ Available buffer:            ~518 MB ✅    │
+└────────────────────────────────────────────┘
+```
 
 ---
 
@@ -969,22 +1186,7 @@ def check_admin_access():
 check_admin_access()
 ```
 
-### 6.2 Model Loading Strategy
-
-```python
-@st.cache_resource
-def load_model():
-    # Cached lazy loading - loads once, shared across sessions
-    with st.spinner("Loading AI models..."):
-        return SentenceTransformer('all-MiniLM-L6-v2')
-```
-
-**Recommendations:**
-- Use DistilBERT/MiniLM to save RAM
-- Always show `st.spinner` during loading
-- Add "Reset Session" button for demo emergencies
-
-### 6.3 Market Standards Database
+### 6.2 Market Standards Database
 
 **Source**: Preprocessed from HuggingFace dataset + manual validation
 
@@ -1204,7 +1406,7 @@ def load_model():
 
 **Update Cadence**: Static for thesis; monthly refresh for production
 
-### 6.4 Learning Resources Database
+### 6.3 Learning Resources Database
 
 **Hybrid Approach:**
 - **Core Skills**: Hardcoded high-quality links (FreeCodeCamp, Harvard CS50)
@@ -1215,7 +1417,7 @@ def load_model():
 - Auto-hide flagged links (404/500)
 - "Report Broken Link" button for users
 
-### 6.5 Logging & Monitoring
+### 6.4 Logging & Monitoring
 
 **What to Log:**
 - File metadata (size, page count)
@@ -1232,7 +1434,7 @@ def load_model():
 - Fail-log table (recent parsing failures)
 - Data export button (CSV for thesis SPSS/Excel)
 
-### 6.6 Error Handling Standards
+### 6.5 Error Handling Standards
 
 **Error Code System:**
 
@@ -1411,7 +1613,7 @@ def show_degraded_mode(missing_feature: str):
         st.rerun()
 ```
 
-### 6.7 Test Strategy
+### 6.6 Test Strategy
 
 **Test Framework & Structure:**
 ```
