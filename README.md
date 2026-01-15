@@ -1,5 +1,124 @@
-# AI-Powered-Resume-Screening-and-Recommendation-System-using-NLP-and-ML
-This project focuses on developing an AI-powered resume screening and recommendation system that uses Natural Language Processing (NLP) and Machine Learning (ML). By using the Resume Training Dataset from Hugging Face, the system will automatically assess and analyze important details like skills, education, and experience from the resume text.
-Techniques such as text preprocessing, Named Entity Recognition (NER), and vectorization models (including TF-IDF, Word2Vec, or BERT) are used to process resume content. Classification algorithms like Logistic Regression, Random Forest, and Support Vector Machines sort resumes by job roles and predict how well candidates fit certain positions.
-In addition to screening, the system will provide automated feedback and recommendations to help students and fresh graduates enhance their resumes by identifying missing skills or improving keyword relevance. An interactive Streamlit interface will allow users to upload resumes, visualize extracted insights, and receive improvement suggestions.
-The project demonstrates how NLP and ML can automate recruitment processes while supporting career preparation through intelligent, data-driven recommendations.
+# AI-Powered Resume Screening and Recommendation System
+
+> **Version**: 1.0.0  
+> **Status**: In Development (Milestone 1)
+
+## Overview
+
+This AI-powered system helps students and fresh graduates:
+
+- 📄 **Parse Resumes**: Upload PDF/DOCX and extract structured data
+- 🔍 **Analyze Skills**: NER + keyword-based skill extraction
+- 📊 **Gap Analysis**: Compare skills against market standards
+- 🎯 **Recommendations**: Get personalized career coaching
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.9+
+- pip (Python package manager)
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/AI-Resume-Screening.git
+cd AI-Resume-Screening
+
+# Create virtual environment
+python -m venv venv
+venv\Scripts\activate  # Windows
+# source venv/bin/activate  # Linux/Mac
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Download spaCy model
+python -m spacy download en_core_web_sm
+```
+
+### Configuration
+
+1. Copy the secrets template:
+   ```bash
+   copy .streamlit\secrets.toml.example .streamlit\secrets.toml
+   ```
+
+2. Edit `.streamlit/secrets.toml` with your credentials:
+   - Supabase URL and keys
+   - Admin password hash
+
+### Running the App
+
+```bash
+streamlit run app.py
+```
+
+The app will open at `http://localhost:8501`
+
+## Project Structure
+
+```
+project/
+├── app.py                    # Main Streamlit application
+├── requirements.txt          # Python dependencies
+├── .streamlit/
+│   ├── config.toml           # Streamlit theme config
+│   └── secrets.toml.example  # Secrets template (copy to secrets.toml)
+├── data/
+│   ├── market_standards.json # Job category benchmarks
+│   └── learning_resources.json # Curated courses/tutorials
+├── models/                   # Trained ML models (.pkl, .joblib)
+├── utils/                    # Core business logic
+│   ├── parser.py             # PDF/DOCX parsing
+│   ├── skill_extractor.py    # NER + keyword extraction
+│   ├── classifier.py         # TF-IDF/SVM + BERT
+│   ├── gap_analyzer.py       # Skill gap analysis
+│   └── ...
+├── pages/                    # Streamlit multi-page app
+├── scripts/
+│   └── train_models.py       # Model training script
+└── tests/
+    ├── conftest.py           # Pytest fixtures
+    ├── unit/                 # Unit tests
+    ├── integration/          # Integration tests
+    └── sample_resumes/       # Test resume files
+```
+
+## Development
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest tests/ -v
+
+# Run with coverage
+pytest tests/ --cov=utils --cov-report=html
+
+# Run specific test file
+pytest tests/unit/test_parser.py -v
+```
+
+### Training Models
+
+Before first deployment, train the classification models:
+
+```bash
+python scripts/train_models.py
+```
+
+## Technology Stack
+
+| Component | Technology |
+|-----------|------------|
+| Frontend | Streamlit |
+| ML Models | sentence-transformers, scikit-learn, spaCy |
+| Database | Supabase (PostgreSQL) |
+| File Storage | Supabase Storage |
+| Hosting | Streamlit Cloud |
+
+## License
+
+MIT License - See [LICENSE](LICENSE) for details.
