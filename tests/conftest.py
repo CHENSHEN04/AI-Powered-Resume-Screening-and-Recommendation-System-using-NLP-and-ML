@@ -4,8 +4,15 @@ Pytest Configuration and Fixtures
 Shared fixtures for all tests in the AI Resume Screening System.
 """
 
-import pytest
+import sys
 from pathlib import Path
+
+# Add project root to Python path so utils module can be imported
+# This allows running individual test files and debugging to work properly
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+import pytest
 
 # ==============================================================================
 # Path Fixtures
