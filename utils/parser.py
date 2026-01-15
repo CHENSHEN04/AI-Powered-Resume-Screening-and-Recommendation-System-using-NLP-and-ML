@@ -1,0 +1,275 @@
+"""
+Resume Parser Module
+====================
+Extracts text and metadata from PDF and DOCX resume files.
+
+Implements the parsing pipeline described in OUTPUT_SPECIFICATION.md section 2.1.
+"""
+
+from dataclasses import dataclass
+from typing import Optional
+from io import BytesIO
+from pathlib import Path
+
+from utils.errors import ErrorCode, AppError, get_error, log_error
+
+
+# ==============================================================================
+# Data Classes
+# ==============================================================================
+
+@dataclass
+class ParseResult:
+    """Result of parsing a resume file."""
+    success: bool
+    text: str
+    page_count: int = 0
+    confidence: float = 0.0
+    error_code: Optional[str] = None
+    error: Optional[AppError] = None
+    metadata: dict = None
+    
+    def __post_init__(self):
+        if self.metadata is None:
+            self.metadata = {}
+
+
+# ==============================================================================
+# Resume Parser Class
+# ==============================================================================
+
+class ResumeParser:
+    """
+    Parse PDF and DOCX resumes to extract text content.
+    
+    Supports:
+    - PDF files (via pdfplumber and PyMuPDF fallback)
+    - DOCX files (via python-docx)
+    - Error handling for corrupted/password-protected files
+    """
+    
+    def __init__(self):
+        """Initialize the parser."""
+        pass
+    
+    def parse(self, file_bytes: bytes, filename: str) -> ParseResult:
+        """
+        Parse a resume file and extract text.
+        
+        Args:
+            file_bytes: File content as bytes
+            filename: Original filename (used to determine type)
+        
+        Returns:
+            ParseResult with extracted text and metadata
+        """
+        ext = Path(filename).suffix.lower()
+        
+        if ext == ".pdf":
+            return self.parse_pdf(file_bytes)
+        elif ext == ".docx":
+            return self.parse_docx(file_bytes)
+        else:
+            error = get_error(ErrorCode.INVALID_FILE_TYPE)
+            return ParseResult(
+                success=False,
+                text="",
+                error_code=error.code.value,
+                error=error
+            )
+    
+    def parse_pdf(self, file_bytes: bytes) -> ParseResult:
+        """
+        Parse a PDF file using pdfplumber with PyMuPDF fallback.
+        
+        Args:
+            file_bytes: PDF file content as bytes
+        
+        Returns:
+            ParseResult with extracted text
+        """
+        import pdfplumber
+        import fitz  # PyMuPDF
+        from io import BytesIO
+        
+        pdf_file = BytesIO(file_bytes)
+        text_chunks = []
+        page_count = 0
+        
+        try:
+            # Try pdfplumber first (better for structured text)
+            with pdfplumber.open(pdf_file) as pdf:
+                page_count = len(pdf.pages)
+                
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text_chunks.append(page_text)
+            
+            full_text = "\n\n".join(text_chunks)
+            
+            # Check if we got any text
+            if not full_text.strip():
+                # Try PyMuPDF as fallback
+                pdf_file.seek(0)
+                doc = fitz.open(stream=pdf_file, filetype="pdf")
+                page_count = len(doc)
+                
+                for page in doc:
+                    page_text = page.get_text()
+                    if page_text:
+                        text_chunks.append(page_text)
+                
+                doc.close()
+                full_text = "\n\n".join(text_chunks)
+            
+            # If still no text, return error
+            if not full_text.strip():
+                error = get_error(ErrorCode.NO_TEXT_EXTRACTED)
+                log_error(error, {"file_type": "pdf", "page_count": page_count})
+                return ParseResult(
+                    success=False,
+                    text="",
+                    page_count=page_count,
+                    error_code=error.code.value,
+                    error=error
+                )
+            
+            # Calculate confidence based on text length and structure
+            confidence = self._calculate_confidence(full_text, page_count)
+            
+            return ParseResult(
+                success=True,
+                text=full_text,
+                page_count=page_count,
+                confidence=confidence,
+                metadata={
+                    "file_type": "pdf",
+                    "text_length": len(full_text),
+                    "parser": "pdfplumber"
+                }
+            )
+        
+        except Exception as e:
+            # Check for password protection
+            error_str = str(e).lower()
+            if "password" in error_str or "encrypted" in error_str:
+                error = get_error(ErrorCode.PASSWORD_PROTECTED)
+            else:
+                error = get_error(ErrorCode.PDF_EXTRACTION_FAILED)
+                error.message = f"PDF extraction failed: {str(e)}"
+            
+            log_error(error, {"exception": str(e), "file_type": "pdf"})
+            return ParseResult(
+                success=False,
+                text="",
+                page_count=page_count,
+                error_code=error.code.value,
+                error=error
+            )
+    
+    def parse_docx(self, file_bytes: bytes) -> ParseResult:
+        """
+        Parse a DOCX file using python-docx.
+        
+        Args:
+            file_bytes: DOCX file content as bytes
+        
+        Returns:
+            ParseResult with extracted text
+        """
+        from docx import Document
+        from io import BytesIO
+        
+        try:
+            docx_file = BytesIO(file_bytes)
+            doc = Document(docx_file)
+            
+            # Extract text from paragraphs
+            text_chunks = []
+            for paragraph in doc.paragraphs:
+                if paragraph.text.strip():
+                    text_chunks.append(paragraph.text)
+            
+            # Extract text from tables
+            for table in doc.tables:
+                for row in table.rows:
+                    row_text = " | ".join(cell.text.strip() for cell in row.cells)
+                    if row_text.strip():
+                        text_chunks.append(row_text)
+            
+            full_text = "\n".join(text_chunks)
+            
+            # Check if we got any text
+            if not full_text.strip():
+                error = get_error(ErrorCode.NO_TEXT_EXTRACTED)
+                log_error(error, {"file_type": "docx"})
+                return ParseResult(
+                    success=False,
+                    text="",
+                    error_code=error.code.value,
+                    error=error
+                )
+            
+            # Estimate page count (rough estimate: 500 words per page)
+            word_count = len(full_text.split())
+            page_count = max(1, word_count // 500)
+            
+            # Calculate confidence
+            confidence = self._calculate_confidence(full_text, page_count)
+            
+            return ParseResult(
+                success=True,
+                text=full_text,
+                page_count=page_count,
+                confidence=confidence,
+                metadata={
+                    "file_type": "docx",
+                    "text_length": len(full_text),
+                    "paragraph_count": len(doc.paragraphs),
+                    "table_count": len(doc.tables)
+                }
+            )
+        
+        except Exception as e:
+            error = get_error(ErrorCode.DOCX_EXTRACTION_FAILED)
+            error.message = f"DOCX extraction failed: {str(e)}"
+            log_error(error, {"exception": str(e), "file_type": "docx"})
+            return ParseResult(
+                success=False,
+                text="",
+                error_code=error.code.value,
+                error=error
+            )
+    
+    def _calculate_confidence(self, text: str, page_count: int) -> float:
+        """
+        Calculate parsing confidence based on text characteristics.
+        
+        Args:
+            text: Extracted text
+            page_count: Number of pages
+        
+        Returns:
+            Confidence score (0.0 to 1.0)
+        """
+        confidence = 0.5  # Base confidence
+        
+        # Boost confidence if we have reasonable text length
+        text_length = len(text.strip())
+        if text_length > 200:
+            confidence += 0.2
+        if text_length > 500:
+            confidence += 0.1
+        
+        # Boost confidence if we detect common resume sections
+        resume_keywords = [
+            "experience", "education", "skills", "projects",
+            "work", "university", "college", "degree"
+        ]
+        text_lower = text.lower()
+        keyword_count = sum(1 for kw in resume_keywords if kw in text_lower)
+        confidence += min(0.2, keyword_count * 0.05)
+        
+        # Cap confidence at 1.0
+        return min(1.0, confidence)
