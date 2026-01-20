@@ -1,0 +1,86 @@
+{
+    "version": "1.0",
+    "last_updated": "2024-01-21",
+    "resources": {
+        "python": [
+            {
+                "title": "Python for Everybody",
+                "url": "https://www.py4e.com/",
+                "type": "Course",
+                "difficulty": "Beginner"
+            },
+            {
+                "title": "Real Python Tutorials",
+                "url": "https://realpython.com/",
+                "type": "Tutorial",
+                "difficulty": "Intermediate"
+            }
+        ],
+        "sql": [
+            {
+                "title": "SQLZoo",
+                "url": "https://sqlzoo.net/",
+                "type": "Interactive",
+                "difficulty": "Beginner"
+            },
+            {
+                "title": "PostgreSQL Official Docs",
+                "url": "https://www.postgresql.org/docs/",
+                "type": "Documentation",
+                "difficulty": "Advanced"
+            }
+        ],
+        "react": [
+            {
+                "title": "React Official Documentation",
+                "url": "https://react.dev/learn",
+                "type": "Documentation",
+                "difficulty": "Beginner"
+            },
+            {
+                "title": "Fullstack Open",
+                "url": "https://fullstackopen.com/en",
+                "type": "Course",
+                "difficulty": "Intermediate"
+            }
+        ],
+        "machine learning": [
+            {
+                "title": "Machine Learning by Andrew Ng",
+                "url": "https://www.coursera.org/specializations/machine-learning-introduction",
+                "type": "Course",
+                "difficulty": "Intermediate"
+            },
+            {
+                "title": "Kaggle Micro-Courses",
+                "url": "https://www.kaggle.com/learn",
+                "type": "Interactive",
+                "difficulty": "Beginner"
+            }
+        ],
+        "git": [
+            {
+                "title": "Pro Git Book",
+                "url": "https://git-scm.com/book/en/v2",
+                "type": "Book",
+                "difficulty": "Intermediate"
+            }
+        ],
+        "docker": [
+            {
+                "title": "Docker Curriculum",
+                "url": "https://docker-curriculum.com/",
+                "type": "Tutorial",
+                "difficulty": "Beginner"
+            }
+        ],
+        "api design": [
+            {
+                "title": "REST API Design Guide",
+                "url": "https://restfulapi.net/",
+                "type": "Guide",
+                "difficulty": "Intermediate"
+            }
+        ]
+    }
+}

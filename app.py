@@ -264,6 +264,47 @@ def main():
                             st.write("**Skill Match:** Uses specific extracted keywords")
                             if prediction["top_category"] != "Unknown":
                                 st.write(f"Model and Skill Analysis agree: **{'Yes' if prediction['top_category'].lower().replace(' ', '_') == top_skill_cat else 'No'}**")
+                                
+                        # 5. Gap Analysis (Milestone 5)
+                        st.divider()
+                        st.subheader("📈 Career Gap Analysis")
+                        
+                        # Determine target role (prefer prediction, fallback to skill match)
+                        target_role = prediction["top_category"] if prediction["top_category"] != "Unknown" else top_skill_cat
+                        
+                        from utils.gap_analyzer import GapAnalyzer
+                        gap_analyzer = GapAnalyzer()
+                        analysis = gap_analyzer.analyze_gaps(skill_data["all_skills"], target_role)
+                        
+                        if "error" not in analysis:
+                            # Match Score
+                            st.progress(analysis["match_percentage"] / 100, 
+                                      text=f"Match Score for {analysis['role']}")
+                            
+                            # Missing Skills
+                            c1, c2 = st.columns(2)
+                            with c1:
+                                if analysis["missing_required"]:
+                                    st.error(f"❌ Missing Required Skills: {', '.join(analysis['missing_required'])}")
+                                else:
+                                    st.success("✅ All required skills matched!")
+                                    
+                            with c2:
+                                if analysis["missing_recommended"]:
+                                    st.warning(f"⚠️ Consider Learning: {', '.join(analysis['missing_recommended'])}")
+                            
+                            # Recommendations
+                            st.info("💡 **Recommendation:** " + " ".join(analysis["recommendations"]))
+                            
+                            # Learning Resources
+                            if analysis["learning_paths"]:
+                                with st.expander("📚 Recommended Learning Resources"):
+                                    for skill, resources in analysis["learning_paths"].items():
+                                        st.markdown(f"**{skill}**")
+                                        for res in resources:
+                                            st.markdown(f"- [{res['title']}]({res['url']}) ({res['type']})")
+                        else:
+                            st.warning(f"Could not perform gap analysis for role: {target_role}")
                             
                     else:
                         st.warning("No specific technical skills detected. Try a more detailed resume.")

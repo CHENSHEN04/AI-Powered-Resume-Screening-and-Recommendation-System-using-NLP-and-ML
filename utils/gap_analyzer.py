@@ -1,0 +1,165 @@
+"""
+Gap Analyzer Module
+===================
+Analyzes skill gaps against market standards and generates personalized recommendations.
+
+Implements the logic specified in OUTPUT_SPECIFICATION.md section 2.1.2 (Hybrid Processing Layer).
+"""
+
+import json
+from pathlib import Path
+from typing import Dict, List, Set, Any
+import joblib
+import streamlit as st
+
+from utils.errors import ErrorCode, AppError, get_error, log_error
+
+# ==============================================================================
+# Constants
+# ==============================================================================
+
+MARKET_STANDARDS_PATH = Path("data/market_standards.json")
+LEARNING_RESOURCES_PATH = Path("data/learning_resources.json")
+
+# ==============================================================================
+# Gap Analyzer Class
+# ==============================================================================
+
+class GapAnalyzer:
+    """
+    Analyzes skill gaps and provides recommendations based on job category.
+    """
+    
+    def __init__(self):
+        """Initialize analyzer by loading standards and resources."""
+        self.standards = self._load_json(MARKET_STANDARDS_PATH)
+        self.resources = self._load_json(LEARNING_RESOURCES_PATH)
+        
+    def _load_json(self, path: Path) -> Dict:
+        """Load JSON data from file."""
+        try:
+            if not path.exists():
+                return {}
+            with open(path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            log_error(get_error(ErrorCode.INSUFFICIENT_DATA), 
+                     {"context": f"Loading {path}", "error": str(e)})
+            return {}
+            
+    def analyze_gaps(self, user_skills: List[str], target_role: str) -> Dict[str, Any]:
+        """
+        Identify missing skills for a target role.
+        
+        Args:
+            user_skills: List of skills extracted from resume
+            target_role: Target job category (key in market_standards)
+            
+        Returns:
+            Dictionary containing:
+            - missing_required: List of critical missing skills
+            - missing_recommended: List of useful missing skills
+            - match_percentage: Weighted score (0-100)
+            - recommendations: List of textual recommendations
+        """
+        # Normalize user skills for comparison
+        user_skills_set = {s.lower() for s in user_skills}
+        
+        # Get role standards
+        # Handle joblib model classes vs json keys mismatch if necessary
+        # Assuming the classifier returns the key or we normalize it
+        role_key = self._normalize_role_name(target_role)
+        role_data = self.standards.get("job_categories", {}).get(role_key)
+        
+        if not role_data:
+            return {
+                "error": "Role not found in standards",
+                "missing_required": [],
+                "missing_recommended": [],
+                "match_percentage": 0.0,
+                "recommendations": []
+            }
+            
+        required = role_data.get("required_skills", [])
+        recommended = role_data.get("recommended_skills", [])
+        nice_to_have = role_data.get("nice_to_have", [])
+        weights = role_data.get("weights", {"required": 1.0, "recommended": 0.6, "nice_to_have": 0.3})
+        
+        # Calculate gaps
+        missing_required = [s for s in required if s.lower() not in user_skills_set]
+        missing_recommended = [s for s in recommended if s.lower() not in user_skills_set]
+        missing_nice = [s for s in nice_to_have if s.lower() not in user_skills_set]
+        
+        # Calculate weighted match percentage
+        total_weight = (len(required) * weights["required"] + 
+                       len(recommended) * weights["recommended"] +
+                       len(nice_to_have) * weights["nice_to_have"])
+        
+        matched_weight = ((len(required) - len(missing_required)) * weights["required"] +
+                         (len(recommended) - len(missing_recommended)) * weights["recommended"] +
+                         (len(nice_to_have) - len(missing_nice)) * weights["nice_to_have"])
+                         
+        match_percentage = (matched_weight / total_weight * 100) if total_weight > 0 else 0.0
+        
+        # Generate recommendations
+        recommendations = self._generate_recommendations(
+            missing_required, missing_recommended, role_data.get("title", target_role)
+        )
+        
+        return {
+            "role": role_data.get("title", target_role),
+            "missing_required": missing_required,
+            "missing_recommended": missing_recommended,
+            "missing_nice_to_have": missing_nice,
+            "match_percentage": round(match_percentage, 1),
+            "recommendations": recommendations,
+            "learning_paths": self._get_learning_resources(missing_required + missing_recommended)
+        }
+    
+    def _normalize_role_name(self, role_name: str) -> str:
+        """Convert role name to json key format (e.g. 'Data Scientist' -> 'data_scientist')."""
+        # This mapping might need to be more robust depending on classifier output
+        # Classifier output: "Data Scientist", JSON key: "data_scientist"
+        if not role_name: 
+            return ""
+            
+        # Try direct key access first
+        if role_name in self.standards.get("job_categories", {}):
+            return role_name
+            
+        # Try converting "Title Case" to "snake_case"
+        snake_case = role_name.lower().replace(" ", "_")
+        if snake_case in self.standards.get("job_categories", {}):
+            return snake_case
+            
+        return snake_case # Default fallback
+
+    def _generate_recommendations(self, missing_req: List[str], missing_rec: List[str], role_title: str) -> List[str]:
+        """Generate textual recommendations."""
+        recs = []
+        
+        if missing_req:
+            recs.append(f"To qualify for {role_title} roles, focus on learning **{', '.join(missing_req[:3])}** first.")
+            
+        if missing_rec:
+            if not missing_req:
+                recs.append(f"To become a strong candidate, add **{', '.join(missing_rec[:3])}** to your skillset.")
+            else:
+                recs.append(f"Once you cover the basics, consider learning **{', '.join(missing_rec[:2])}** to stand out.")
+                
+        if not missing_req and not missing_rec:
+            recs.append("You have a strong profile for this role! Focus on building projects to demonstrate your expertise.")
+            
+        return recs
+
+    def _get_learning_resources(self, missing_skills: List[str]) -> Dict[str, List[Dict]]:
+        """Get learning resources for missing skills."""
+        paths = {}
+        all_resources = self.resources.get("resources", {})
+        
+        for skill in missing_skills:
+            skill_key = skill.lower()
+            if skill_key in all_resources:
+                paths[skill] = all_resources[skill_key]
+                
+        return paths
