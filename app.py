@@ -213,31 +213,57 @@ def main():
                         
                     skill_data = extractor.extract_skills(parse_result.text)
                     
-                    # 3. specific display for Milestone 3
-                    st.subheader("🧠 Skills Detected")
+                    # 3. Classify Job Role (Milestone 4)
+                    from utils.classifier import JobClassifier
+                    classifier = JobClassifier()
+                    prediction = classifier.predict(parse_result.text)
+                    
+                    st.divider()
+                    st.subheader("🤖 AI Classification")
+                    
+                    if prediction["top_category"] != "Unknown":
+                        c1, c2 = st.columns([1, 2])
+                        with c1:
+                            st.metric(
+                                "Predicted Role", 
+                                prediction["top_category"],
+                                f"{prediction['confidence']*100:.1f}% Confidence"
+                            )
+                        with c2:
+                            # Show all scores as a chart
+                            if prediction["all_scores"]:
+                                st.caption("Category Probability Distribution")
+                                st.bar_chart(prediction["all_scores"])
+                    else:
+                        st.warning("⚠️ Could not classify job role. Models might be missing.")
+
+                    # 4. Skills Display (Updated)
+                    st.divider()
+                    st.subheader("🧠 Skills Analysis")
                     
                     if skill_data["all_skills"]:
-                        # Group categories
+                        # Group categories based on skill match
                         categories = extractor.map_to_category(skill_data["all_skills"])
-                        top_cat = list(categories.keys())[0] if categories else "Unknown"
+                        top_skill_cat = list(categories.keys())[0] if categories else "Unknown"
                         
                         col1, col2 = st.columns([2, 1])
                         
                         with col1:
-                            st.write(f"**Found {skill_data['count']} skills:**")
-                            # Display as chips/tags
+                            st.write(f"**Found {skill_data['count']} technical skills:**")
                             st.markdown(
                                 " ".join([f"`{s}`" for s in skill_data["all_skills"]]),
                                 unsafe_allow_html=True
                             )
                         
                         with col2:
-                            st.metric("Likely Role", top_cat.replace("_", " ").title(), 
-                                     f"{categories[top_cat]*100:.0f}% Match")
+                            st.metric("Skill-based Match", top_skill_cat.replace("_", " ").title(), 
+                                     f"{categories.get(top_skill_cat, 0)*100:.0f}% Match")
                             
-                        # Debug / Raw Data
-                        with st.expander("📊 Detailed Analysis (Debug)"):
-                            st.json(categories)
+                        with st.expander("📊 Classification Details"):
+                            st.write("**Model Prediction:** Uses text content (TF-IDF + SVM)")
+                            st.write("**Skill Match:** Uses specific extracted keywords")
+                            if prediction["top_category"] != "Unknown":
+                                st.write(f"Model and Skill Analysis agree: **{'Yes' if prediction['top_category'].lower().replace(' ', '_') == top_skill_cat else 'No'}**")
                             
                     else:
                         st.warning("No specific technical skills detected. Try a more detailed resume.")
