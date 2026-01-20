@@ -1,0 +1,135 @@
+{
+    "version": "1.0",
+    "last_updated": "2024-01-16",
+    "job_categories": {
+        "frontend_developer": {
+            "title": "Frontend Developer",
+            "required_skills": [
+                "HTML",
+                "CSS",
+                "JavaScript",
+                "React",
+                "Git"
+            ],
+            "recommended_skills": [
+                "TypeScript",
+                "Redux",
+                "Next.js",
+                "Tailwind CSS",
+                "Jest",
+                "GraphQL"
+            ],
+            "nice_to_have": [
+                "Docker",
+                "CI/CD",
+                "Figma",
+                "Web Accessibility"
+            ],
+            "weights": {
+                "required": 1.0,
+                "recommended": 0.6,
+                "nice_to_have": 0.3
+            }
+        },
+        "backend_developer": {
+            "title": "Backend Developer",
+            "required_skills": [
+                "Python",
+                "SQL",
+                "API Design",
+                "Git",
+                "Database Design"
+            ],
+            "recommended_skills": [
+                "Django",
+                "FastAPI",
+                "PostgreSQL",
+                "Docker",
+                "Redis",
+                "AWS"
+            ],
+            "nice_to_have": [
+                "Kubernetes",
+                "Microservices",
+                "System Design",
+                "GraphQL"
+            ],
+            "weights": {
+                "required": 1.0,
+                "recommended": 0.6,
+                "nice_to_have": 0.3
+            }
+        },
+        "data_scientist": {
+            "title": "Data Scientist",
+            "required_skills": [
+                "Python",
+                "SQL",
+                "Machine Learning",
+                "Pandas",
+                "NumPy"
+            ],
+            "recommended_skills": [
+                "Scikit-learn",
+                "TensorFlow",
+                "PyTorch",
+                "Data Visualization",
+                "Statistics"
+            ],
+            "nice_to_have": [
+                "Big Data",
+                "Spark",
+                "NLP",
+                "Computer Vision",
+                "MLOps"
+            ],
+            "weights": {
+                "required": 1.0,
+                "recommended": 0.6,
+                "nice_to_have": 0.3
+            }
+        },
+        "fullstack_developer": {
+            "title": "Full Stack Developer",
+            "required_skills": [
+                "HTML",
+                "CSS",
+                "JavaScript",
+                "Python",
+                "React",
+                "SQL",
+                "Git"
+            ],
+            "recommended_skills": [
+                "Node.js",
+                "TypeScript",
+                "Django",
+                "Docker",
+                "AWS"
+            ],
+            "nice_to_have": [
+                "Redis",
+                "GraphQL",
+                "CI/CD",
+                "System Design"
+            ],
+            "weights": {
+                "required": 1.0,
+                "recommended": 0.6,
+                "nice_to_have": 0.3
+            }
+        }
+    },
+    "skill_aliases": {
+        "js": "JavaScript",
+        "reactjs": "React",
+        "react.js": "React",
+        "postgres": "PostgreSQL",
+        "postgresql": "PostgreSQL",
+        "py": "Python",
+        "ml": "Machine Learning",
+        "nlp": "Natural Language Processing",
+        "aws": "Amazon Web Services",
+        "ts": "TypeScript"
+    }
+}

@@ -188,10 +188,65 @@ def main():
             "- Analyze against market standards"
         )
         
+
         if st.button("🔍 Analyze Resume", type="primary"):
             with st.spinner("Analyzing your resume..."):
-                # Placeholder - actual implementation in Milestone 2
-                st.warning("⚠️ Full analysis coming in Milestone 2!")
+                # 1. Parse Resume
+                from utils.parser import ResumeParser
+                parser = ResumeParser()
+                # Reset pointer to start
+                uploaded_file.seek(0)
+                file_bytes = uploaded_file.read()
+                
+                parse_result = parser.parse(file_bytes, uploaded_file.name)
+                
+                if parse_result.success:
+                    # Show parse success
+                    st.success(f"✅ Parsed {parse_result.page_count} pages with {parse_result.confidence*100:.0f}% confidence")
+                    
+                    # 2. Extract Skills
+                    from utils.skill_extractor import SkillExtractor
+                    extractor = SkillExtractor()
+                    
+                    with st.expander("📝 Extracted Text Preview", expanded=False):
+                        st.text(parse_result.text[:500] + "...")
+                        
+                    skill_data = extractor.extract_skills(parse_result.text)
+                    
+                    # 3. specific display for Milestone 3
+                    st.subheader("🧠 Skills Detected")
+                    
+                    if skill_data["all_skills"]:
+                        # Group categories
+                        categories = extractor.map_to_category(skill_data["all_skills"])
+                        top_cat = list(categories.keys())[0] if categories else "Unknown"
+                        
+                        col1, col2 = st.columns([2, 1])
+                        
+                        with col1:
+                            st.write(f"**Found {skill_data['count']} skills:**")
+                            # Display as chips/tags
+                            st.markdown(
+                                " ".join([f"`{s}`" for s in skill_data["all_skills"]]),
+                                unsafe_allow_html=True
+                            )
+                        
+                        with col2:
+                            st.metric("Likely Role", top_cat.replace("_", " ").title(), 
+                                     f"{categories[top_cat]*100:.0f}% Match")
+                            
+                        # Debug / Raw Data
+                        with st.expander("📊 Detailed Analysis (Debug)"):
+                            st.json(categories)
+                            
+                    else:
+                        st.warning("No specific technical skills detected. Try a more detailed resume.")
+                        
+                else:
+                    st.error(f"Failed to parse resume: {parse_result.error_code}")
+                    if parse_result.error:
+                        st.info(parse_result.error.user_message)
+
 
 
 if __name__ == "__main__":
