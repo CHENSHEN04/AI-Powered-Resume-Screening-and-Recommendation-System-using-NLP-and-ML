@@ -21,14 +21,38 @@ class DatabaseManager:
         """Initialize Supabase client using secrets."""
         try:
             url = st.secrets["supabase"]["url"]
-            key = st.secrets["supabase"]["key"]
+            key = st.secrets["supabase"]["anon_key"]
             return create_client(url, key)
-        except Exception:
-            # Fallback for local development or missing secrets
+        except Exception as e:
+            # log_error skipped here to avoid circular dep or missing logger
             return None
 
-    def is_connected(self) -> bool:
-        return self.supabase is not None
+    # --- Authentication Methods ---
+    
+    def sign_up(self, email: str, password: str, full_name: str):
+        """Register a new user."""
+        if not self.supabase: return None, "Database not connected"
+        try:
+            res = self.supabase.auth.sign_up({"email": email, "password": password})
+            if res.user:
+                # Create profile entry
+                self.create_profile(res.user.id, email, full_name)
+            return res, None
+        except Exception as e:
+            return None, str(e)
+
+    def sign_in(self, email: str, password: str):
+        """Log in an existing user."""
+        if not self.supabase: return None, "Database not connected"
+        try:
+            return self.supabase.auth.sign_in_with_password({"email": email, "password": password}), None
+        except Exception as e:
+            return None, str(e)
+
+    def sign_out(self):
+        """Log out the current user."""
+        if self.supabase:
+            return self.supabase.auth.sign_out()
 
     def create_profile(self, user_id: str, email: str, full_name: str = ""):
         """Create or update user profile."""
