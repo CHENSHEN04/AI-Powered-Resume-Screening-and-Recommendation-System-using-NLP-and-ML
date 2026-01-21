@@ -11,7 +11,7 @@ from pathlib import Path
 from utils.visualizer import Visualizer
 from utils.validators import validate_file
 from utils.ui_components import show_error
-from utils.database import DatabaseManager
+from utils.db_handler import DatabaseManager
 
 # ==============================================================================
 # Page Configuration
