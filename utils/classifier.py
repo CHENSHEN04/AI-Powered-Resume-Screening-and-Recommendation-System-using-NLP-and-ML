@@ -22,6 +22,7 @@ from utils.errors import ErrorCode, AppError, get_error, log_error
 MODELS_DIR = Path("models")
 CLF_MODEL_PATH = MODELS_DIR / "clf.joblib"
 TFIDF_MODEL_PATH = MODELS_DIR / "tfidf.joblib"
+ENCODER_MODEL_PATH = MODELS_DIR / "encoder.joblib"
 
 # ==============================================================================
 # Job Classifier Class
@@ -34,7 +35,7 @@ class JobClassifier:
     
     def __init__(self):
         """Initialize classifier by loading models."""
-        self.clf, self.tfidf = self._load_models()
+        self.clf, self.tfidf, self.encoder = self._load_models()
         
     @staticmethod
     @st.cache_resource
@@ -43,22 +44,27 @@ class JobClassifier:
         Load pre-trained models with caching.
         
         Returns:
-            Tuple of (classifier, vectorizer) or (None, None) on failure
+            Tuple of (classifier, vectorizer, encoder) or (None, None, None) on failure
         """
         try:
             if not CLF_MODEL_PATH.exists() or not TFIDF_MODEL_PATH.exists():
                 log_error(get_error(ErrorCode.SVM_MODEL_ERROR), 
                          {"context": "Model files missing"})
-                return None, None
+                return None, None, None
                 
             clf = joblib.load(CLF_MODEL_PATH)
             tfidf = joblib.load(TFIDF_MODEL_PATH)
-            return clf, tfidf
+            
+            encoder = None
+            if ENCODER_MODEL_PATH.exists():
+                encoder = joblib.load(ENCODER_MODEL_PATH)
+                
+            return clf, tfidf, encoder
             
         except Exception as e:
             log_error(get_error(ErrorCode.SVM_MODEL_ERROR), 
                      {"context": "Loading models", "error": str(e)})
-            return None, None
+            return None, None, None
             
     def predict(self, text: str) -> Dict:
         """
@@ -82,28 +88,31 @@ class JobClassifier:
             
         try:
             # Vectorize text
-            # Transform expects a list/iterable
             vectors = self.tfidf.transform([text])
             
             # Predict
-            prediction = self.clf.predict(vectors)[0]
+            prediction_idx = self.clf.predict(vectors)[0]
             
-            # Helper to convert numpy types to python types (and ints to str)
-            def sanitize_label(label):
-                if hasattr(label, "item"):
-                    label = label.item()
-                return str(label)
-
-            top_cat = sanitize_label(prediction)
+            # Decode label if encoder exists
+            if self.encoder:
+                top_category = self.encoder.inverse_transform([prediction_idx])[0]
+            else:
+                top_category = str(prediction_idx)
             
             # Get probabilities if supported
             try:
                 probs = self.clf.predict_proba(vectors)[0]
-                classes = self.clf.classes_
+                classes_idx = self.clf.classes_
+                
+                # Map class indices to names if encoder exists
+                if self.encoder:
+                    class_labels = self.encoder.inverse_transform(classes_idx)
+                else:
+                    class_labels = [str(c) for c in classes_idx]
                 
                 all_scores = {
-                    sanitize_label(cls): float(prob) 
-                    for cls, prob in zip(classes, probs)
+                    label: float(prob) 
+                    for label, prob in zip(class_labels, probs)
                 }
                 
                 # Sort by score descending
@@ -113,15 +122,15 @@ class JobClassifier:
                     reverse=True
                 ))
                 
-                confidence = all_scores.get(top_cat, 0.0)
+                confidence = all_scores.get(top_category, 0.0)
                 
             except (AttributeError, NotImplementedError):
                 # Fallback
-                all_scores = {top_cat: 1.0}
+                all_scores = {top_category: 1.0}
                 confidence = 1.0
                 
             return {
-                "top_category": top_cat,
+                "top_category": top_category,
                 "confidence": confidence,
                 "all_scores": all_scores
             }
