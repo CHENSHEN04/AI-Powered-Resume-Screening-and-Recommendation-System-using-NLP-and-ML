@@ -88,14 +88,21 @@ class JobClassifier:
             # Predict
             prediction = self.clf.predict(vectors)[0]
             
-            # Get probabilities if supported (SVM requires probability=True during training)
-            # If not supported, we'll just return 1.0 for the predicted class
+            # Helper to convert numpy types to python types (and ints to str)
+            def sanitize_label(label):
+                if hasattr(label, "item"):
+                    label = label.item()
+                return str(label)
+
+            top_cat = sanitize_label(prediction)
+            
+            # Get probabilities if supported
             try:
                 probs = self.clf.predict_proba(vectors)[0]
                 classes = self.clf.classes_
                 
                 all_scores = {
-                    cls: float(prob) 
+                    sanitize_label(cls): float(prob) 
                     for cls, prob in zip(classes, probs)
                 }
                 
@@ -106,15 +113,15 @@ class JobClassifier:
                     reverse=True
                 ))
                 
-                confidence = all_scores.get(prediction, 0.0)
+                confidence = all_scores.get(top_cat, 0.0)
                 
             except (AttributeError, NotImplementedError):
-                # Fallback if model doesn't support probabilities
-                all_scores = {prediction: 1.0}
+                # Fallback
+                all_scores = {top_cat: 1.0}
                 confidence = 1.0
                 
             return {
-                "top_category": prediction,
+                "top_category": top_cat,
                 "confidence": confidence,
                 "all_scores": all_scores
             }
