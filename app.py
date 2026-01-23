@@ -166,7 +166,11 @@ def main():
                                 gap_analyzer = GapAnalyzer()
                                 role_cats = extractor.map_to_category(skill_data["all_skills"])
                                 top_skill_cat = list(role_cats.keys())[0] if role_cats else "Unknown"
-                                target_role = prediction["top_category"] if prediction["top_category"] != "Unknown" else top_skill_cat
+                                
+                                # Smart Fallback: Use skill-based role if model returns "Unknown" or numeric garbage (e.g. "6")
+                                target_role = prediction["top_category"]
+                                if target_role == "Unknown" or str(target_role).isdigit():
+                                    target_role = top_skill_cat
                                 
                                 analysis = gap_analyzer.analyze_gaps(skill_data["all_skills"], target_role)
                                 st.session_state["gap_analysis"] = analysis

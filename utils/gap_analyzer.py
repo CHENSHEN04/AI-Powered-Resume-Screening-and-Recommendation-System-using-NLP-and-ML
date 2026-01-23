@@ -74,10 +74,13 @@ class GapAnalyzer:
         if not role_data:
             return {
                 "error": "Role not found in standards",
+                "role": target_role,
                 "missing_required": [],
                 "missing_recommended": [],
+                "missing_nice_to_have": [],
                 "match_percentage": 0.0,
-                "recommendations": []
+                "recommendations": ["Could not analyze gaps for this role. Try updating your target role manually."],
+                "learning_paths": {}
             }
             
         required = role_data.get("required_skills", [])
