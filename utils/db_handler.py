@@ -33,10 +33,14 @@ class DatabaseManager:
         """Register a new user."""
         if not self.supabase: return None, "Database not connected"
         try:
-            res = self.supabase.auth.sign_up({"email": email, "password": password})
-            if res.user:
-                # Create profile entry
-                self.create_profile(res.user.id, email, full_name)
+            # Pass full_name in metadata so the Trigger can use it
+            options = {"data": {"full_name": full_name}}
+            res = self.supabase.auth.sign_up({
+                "email": email, 
+                "password": password, 
+                "options": options
+            })
+            # Profile creation is now handled by the SQL Trigger (on_auth_user_created)
             return res, None
         except Exception as e:
             return None, str(e)
