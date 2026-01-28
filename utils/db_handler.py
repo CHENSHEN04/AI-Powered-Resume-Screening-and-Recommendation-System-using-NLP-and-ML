@@ -58,6 +58,24 @@ class DatabaseManager:
         if self.supabase:
             return self.supabase.auth.sign_out()
 
+    def sign_in_anonymously(self):
+        """Create an anonymous session."""
+        if not self.supabase: return None, "Database not connected"
+        try:
+            return self.supabase.auth.sign_in_anonymously(), None
+        except Exception as e:
+            return None, str(e)
+
+    def merge_anonymous_data(self, anonymous_id: str, new_user_id: str):
+        """Reassign data from anonymous user to new authenticated user."""
+        if not self.supabase: return False, "Database not connected"
+        try:
+            # Update resumes table
+            self.supabase.table("resumes").update({"user_id": new_user_id}).eq("user_id", anonymous_id).execute()
+            return True, None
+        except Exception as e:
+            return False, str(e)
+
     def create_profile(self, user_id: str, email: str, full_name: str = ""):
         """Create or update user profile."""
         if not self.supabase: return
@@ -131,3 +149,29 @@ class DatabaseManager:
                 .execute().data
         except Exception as e:
             return []
+
+    def get_previous_version(self, user_id: str, filename: str) -> Optional[Dict]:
+        """
+        Fetch the most recent previous version of a specific file.
+        Returns None if this is the first upload.
+        """
+        if not self.supabase: return None
+        
+        try:
+            # Fetch most recent matching filename
+            # Note: This logic assumes we haven't inserted the NEW one yet, 
+            # OR we need to handle ignoring the current one if it's already inserted.
+            # Best pattern: Call this BEFORE inserting the new one.
+            response = self.supabase.table("resumes")\
+                .select("*, skills(*)")\
+                .eq("user_id", user_id)\
+                .eq("filename", filename)\
+                .order("created_at", desc=True)\
+                .limit(1)\
+                .execute()
+            
+            if response.data:
+                return response.data[0]
+            return None
+        except Exception as e:
+            return None

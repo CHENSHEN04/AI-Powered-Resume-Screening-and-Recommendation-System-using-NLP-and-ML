@@ -12,6 +12,7 @@ from utils.visualizer import Visualizer
 from utils.validators import validate_file
 from utils.ui_components import show_error
 from utils.db_handler import DatabaseManager
+from utils.rate_limiter import RateLimiter, show_rate_limit_info
 
 # ==============================================================================
 # Page Configuration
@@ -58,7 +59,9 @@ def init_session_state():
             "parse_result": None,
             "skill_data": None,
             "prediction": None,
-            "gap_analysis": None
+            "gap_analysis": None,
+            "is_anonymous": False,
+            "growth_data": None
         })
 
 init_session_state()
@@ -75,15 +78,39 @@ def main():
         st.markdown("---")
         
         # --- Authentication Section ---
-        if st.session_state["user"]:
-            user = st.session_state["user"]
+        user = st.session_state.get("user")
+        is_anon = st.session_state.get("is_anonymous", False)
+
+        if user and not is_anon:
+            # Logged in User
             st.success(f"Logged in: {user.email}")
             if st.button("🚪 Log Out"):
                 db.sign_out()
                 st.session_state["user"] = None
+                st.session_state["is_anonymous"] = False
                 st.rerun()
+        
         else:
-            auth_mode = st.radio("Account", ["Login", "Sign Up"], horizontal=True)
+            # Guest or Not Logged In
+            auth_mode = "Sign Up" # Default for guest conversion
+            
+            if is_anon:
+                st.info("☁️ Guest Mode")
+                st.caption("Sign up to save your history!")
+            else:
+                st.markdown("### Get Started")
+                if st.button("👻 Continue as Guest", use_container_width=True):
+                    res, err = db.sign_in_anonymously()
+                    if res:
+                        st.session_state["user"] = res.user
+                        st.session_state["is_anonymous"] = True
+                        st.rerun()
+                    else:
+                        st.error(f"Guest login failed: {err}")
+                        
+                st.markdown("---")
+                auth_mode = st.radio("Account", ["Login", "Sign Up"], horizontal=True)
+
             with st.form("auth_form"):
                 email = st.text_input("Email")
                 password = st.text_input("Password", type="password")
@@ -95,12 +122,21 @@ def main():
                         if err: st.error(err)
                         else:
                             st.session_state["user"] = res.user
+                            st.session_state["is_anonymous"] = False
                             st.rerun()
                     else:
+                        # Sign Up
                         res, err = db.sign_up(email, password, full_name)
                         if err: st.error(err)
                         else:
-                            st.success("Verification email sent!")
+                            # If previously anonymous, merge data
+                            if is_anon and user:
+                                old_id = user.id
+                                new_id = res.user.id if res.user else None
+                                if new_id:
+                                    db.merge_anonymous_data(old_id, new_id)
+                            
+                            st.success("Verification email sent! Please check inbox.")
 
         st.markdown("---")
         st.info("💡 **Mode:** Candidate Self-Review")
@@ -125,24 +161,64 @@ def main():
     with main_tabs[0]:
         if not st.session_state.get("analyzed"):
             st.markdown("### 1. Upload Resume")
+            
+            # Show rate limit quota
+            if st.session_state.get("is_anonymous"):
+                user_id = st.session_state["user"].id
+                is_authenticated = False
+            elif st.session_state.get("user"):
+                user_id = st.session_state["user"].email
+                is_authenticated = True
+            else:
+                user_id = "anonymous"
+                is_authenticated = False
+                
+            show_rate_limit_info(user_id, is_authenticated)
+            
             uploaded_file = st.file_uploader(
                 "Upload your PDF or DOCX file", 
                 type=["pdf", "docx"]
             )
 
             if uploaded_file:
-                file_bytes = uploaded_file.getvalue()
-                is_valid, error = validate_file(file_bytes, uploaded_file.name)
+                # Check rate limit BEFORE processing
+                # Check rate limit BEFORE processing
+                limiter = RateLimiter()
                 
-                if not is_valid:
-                    show_error(error)
+                if st.session_state.get("is_anonymous"):
+                    user_id = st.session_state["user"].id
+                    is_authenticated = False
+                elif st.session_state.get("user"):
+                    user_id = st.session_state["user"].email
+                    is_authenticated = True
                 else:
-                    st.success(f"✅ Ready: {uploaded_file.name}")
-                    if st.button("🚀 Analyze Now", type="primary"):
-                        with st.spinner("Analyzing..."):
-                            # 1. Parse
-                            from utils.parser import ResumeParser
-                            parser = ResumeParser()
+                    user_id = "anonymous"
+                    is_authenticated = False
+                
+                is_allowed, error_msg = limiter.check_rate_limit(user_id, is_authenticated)
+                
+                if not is_allowed:
+                    st.error(error_msg)
+                    st.info("💡 **Tip**: Create an account to get higher upload limits!")
+                else:
+                    file_bytes = uploaded_file.getvalue()
+                    
+                    # Check file size
+                    max_size = limiter.get_file_size_limit(is_authenticated)
+                    if len(file_bytes) > max_size:
+                        st.error(f"📁 File too large. Maximum size: {max_size // (1024*1024)} MB")
+                    else:
+                        is_valid, error = validate_file(file_bytes, uploaded_file.name)
+                        
+                        if not is_valid:
+                            show_error(error)
+                        else:
+                            st.success(f"✅ Ready: {uploaded_file.name}")
+                            if st.button("🚀 Analyze Now", type="primary"):
+                                with st.spinner("Analyzing..."):
+                                    # 1. Parse
+                                    from utils.parser import ResumeParser
+                                    parser = ResumeParser()
                             uploaded_file.seek(0)
                             parse_result = parser.parse(uploaded_file.read(), uploaded_file.name)
                             
@@ -163,7 +239,7 @@ def main():
                                 
                                 # 4. Gap Analysis
                                 from utils.gap_analyzer import GapAnalyzer
-                                gap_analyzer = GapAnalyzer()
+                                analyzer = GapAnalyzer()
                                 role_cats = extractor.map_to_category(skill_data["all_skills"])
                                 top_skill_cat = list(role_cats.keys())[0] if role_cats else "Unknown"
                                 
@@ -176,7 +252,16 @@ def main():
                                 st.session_state["gap_analysis"] = analysis
                                 st.session_state["analyzed"] = True
 
-                                # 5. Save to DB if logged in
+                                # 5. Calculate Growth Logic
+                                from utils.growth_tracker import GrowthTracker
+                                previous_version = None
+                                if st.session_state.get("user"):
+                                    previous_version = db.get_previous_version(st.session_state["user"].id, uploaded_file.name)
+                                
+                                growth = GrowthTracker.calculate_growth(analysis, skill_data["all_skills"], previous_version)
+                                st.session_state["growth_data"] = growth
+
+                                # 6. Save to DB if logged in
                                 if st.session_state["user"]:
                                     db.save_resume_analysis(
                                         st.session_state["user"].id,
@@ -198,6 +283,12 @@ def main():
             analysis = st.session_state["gap_analysis"]
             skill_data = st.session_state["skill_data"]
             
+            # Row 0: Growth Metrics
+            if st.session_state.get("growth_data"):
+                from utils.growth_tracker import GrowthTracker
+                GrowthTracker.render_growth_metrics(st.session_state["growth_data"])
+                st.markdown("---")
+
             # Row 1: Metrics
             st.markdown("### 📊 Executive Summary")
             m1, m2, m3, m4 = st.columns(4)
@@ -220,10 +311,26 @@ def main():
             # Row 3: Tabs
             st.markdown("---")
             t1, t2, t3 = st.tabs(["✅ Skills", "❌ Gaps", "🎓 Plan"])
-            with t1: st.write(skill_data["all_skills"])
+            with t1: 
+                if skill_data["all_skills"]:
+                    for skill in skill_data["all_skills"]:
+                        st.markdown(f"- {skill}")
+                else:
+                    st.info("No technical skills detected")
             with t2:
-                st.write("**Missing Required:**", analysis["missing_required"])
-                st.write("**Missing Recommended:**", analysis["missing_recommended"])
+                st.markdown("**Missing Required:**")
+                if analysis["missing_required"]:
+                    for skill in analysis["missing_required"]:
+                        st.markdown(f"- {skill}")
+                else:
+                    st.success("✅ You have all required skills!")
+                    
+                st.markdown("**Missing Recommended:**")
+                if analysis["missing_recommended"]:
+                    for skill in analysis["missing_recommended"]:
+                        st.markdown(f"- {skill}")
+                else:
+                    st.success("✅ You have all recommended skills!")
             with t3:
                 for skill, res in analysis["learning_paths"].items():
                     with st.expander(f"📚 {skill}"):
@@ -233,6 +340,10 @@ def main():
     if st.session_state["user"]:
         with main_tabs[1]:
             st.markdown("### 📜 Your Analysis History")
+            
+            if st.session_state.get("is_anonymous"):
+                st.warning("⚠️ You are in Guest Mode. History will be cleared when you close the session. Sign up to save permanently!")
+                
             history = db.get_user_history(st.session_state["user"].id)
             if history:
                 df = pd.DataFrame(history)

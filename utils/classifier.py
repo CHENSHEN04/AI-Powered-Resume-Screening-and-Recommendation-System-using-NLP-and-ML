@@ -14,6 +14,7 @@ from typing import Dict, List, Tuple, Optional
 import streamlit as st
 
 from utils.errors import ErrorCode, AppError, get_error, log_error
+from utils.semantic_matcher import SemanticMatcher
 
 # ==============================================================================
 # Constants
@@ -27,15 +28,14 @@ ENCODER_MODEL_PATH = MODELS_DIR / "encoder.joblib"
 # ==============================================================================
 # Job Classifier Class
 # ==============================================================================
-
-class JobClassifier:
     """
-    Predicts job category for a given resume text using TF-IDF + SVM.
+    Predicts job category for a given resume text using TF-IDF + SVM + BERT (Hybrid).
     """
     
     def __init__(self):
         """Initialize classifier by loading models."""
         self.clf, self.tfidf, self.encoder = self._load_models()
+        self.semantic_matcher = SemanticMatcher()
         
     @staticmethod
     @st.cache_resource
@@ -115,6 +115,20 @@ class JobClassifier:
                     for label, prob in zip(class_labels, probs)
                 }
                 
+                # --- HYBRID SCORING START ---
+                # Retrieve and mix with semantic scores if model is available
+                if self.semantic_matcher and self.semantic_matcher.model:
+                     hybrid_scores = self.semantic_matcher.hybrid_score(
+                         all_scores, 
+                         text,
+                         svm_weight=0.6,
+                         bert_weight=0.4
+                     )
+                     if hybrid_scores:
+                         all_scores = hybrid_scores
+                         top_category = list(all_scores.keys())[0]
+                # --- HYBRID SCORING END ---
+
                 # Sort by score descending
                 all_scores = dict(sorted(
                     all_scores.items(), 

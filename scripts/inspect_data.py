@@ -4,8 +4,8 @@ import pandas as pd
 
 try:
     print("Loading dataset ahmedheakl/resume-atlas...")
-    dataset = load_dataset("ahmedheakl/resume-atlas")
-    df = dataset['train'].to_pandas()
+    ds = load_dataset("ahmedheakl/resume-atlas")
+    df = ds['train'].to_pandas()
     
     print(f"Columns: {df.columns.tolist()}")
     print("First row:")

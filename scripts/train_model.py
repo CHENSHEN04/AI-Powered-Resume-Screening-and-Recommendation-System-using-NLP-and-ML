@@ -44,9 +44,9 @@ def train_pipeline():
     # 1. Load Dataset
     print("⬇️  Downloading dataset (ahmedheakl/resume-atlas)...")
     try:
-        dataset = load_dataset("ahmedheakl/resume-atlas")
+        ds = load_dataset("ahmedheakl/resume-atlas")
         # Convert to pandas for easier handling
-        df = dataset['train'].to_pandas()
+        df = ds['train'].to_pandas()
         print(f"✅ Dataset loaded: {len(df)} records")
         print(f"Columns: {df.columns.tolist()}")
     except Exception as e:

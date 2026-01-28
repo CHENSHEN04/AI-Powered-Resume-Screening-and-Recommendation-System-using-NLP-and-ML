@@ -1,135 +1,1053 @@
 {
-    "version": "1.0",
-    "last_updated": "2024-01-16",
-    "job_categories": {
-        "frontend_developer": {
-            "title": "Frontend Developer",
-            "required_skills": [
-                "HTML",
-                "CSS",
-                "JavaScript",
-                "React",
-                "Git"
-            ],
-            "recommended_skills": [
-                "TypeScript",
-                "Redux",
-                "Next.js",
-                "Tailwind CSS",
-                "Jest",
-                "GraphQL"
-            ],
-            "nice_to_have": [
-                "Docker",
-                "CI/CD",
-                "Figma",
-                "Web Accessibility"
-            ],
-            "weights": {
-                "required": 1.0,
-                "recommended": 0.6,
-                "nice_to_have": 0.3
-            }
-        },
-        "backend_developer": {
-            "title": "Backend Developer",
-            "required_skills": [
-                "Python",
-                "SQL",
-                "API Design",
-                "Git",
-                "Database Design"
-            ],
-            "recommended_skills": [
-                "Django",
-                "FastAPI",
-                "PostgreSQL",
-                "Docker",
-                "Redis",
-                "AWS"
-            ],
-            "nice_to_have": [
-                "Kubernetes",
-                "Microservices",
-                "System Design",
-                "GraphQL"
-            ],
-            "weights": {
-                "required": 1.0,
-                "recommended": 0.6,
-                "nice_to_have": 0.3
-            }
-        },
-        "data_scientist": {
-            "title": "Data Scientist",
-            "required_skills": [
-                "Python",
-                "SQL",
-                "Machine Learning",
-                "Pandas",
-                "NumPy"
-            ],
-            "recommended_skills": [
-                "Scikit-learn",
-                "TensorFlow",
-                "PyTorch",
-                "Data Visualization",
-                "Statistics"
-            ],
-            "nice_to_have": [
-                "Big Data",
-                "Spark",
-                "NLP",
-                "Computer Vision",
-                "MLOps"
-            ],
-            "weights": {
-                "required": 1.0,
-                "recommended": 0.6,
-                "nice_to_have": 0.3
-            }
-        },
-        "fullstack_developer": {
-            "title": "Full Stack Developer",
-            "required_skills": [
-                "HTML",
-                "CSS",
-                "JavaScript",
-                "Python",
-                "React",
-                "SQL",
-                "Git"
-            ],
-            "recommended_skills": [
-                "Node.js",
-                "TypeScript",
-                "Django",
-                "Docker",
-                "AWS"
-            ],
-            "nice_to_have": [
-                "Redis",
-                "GraphQL",
-                "CI/CD",
-                "System Design"
-            ],
-            "weights": {
-                "required": 1.0,
-                "recommended": 0.6,
-                "nice_to_have": 0.3
-            }
-        }
+  "version": "2.0",
+  "last_updated": "2026-01-23",
+  "job_categories": {
+    "accountant": {
+      "title": "Accountant",
+      "required_skills": [
+        "Accounting",
+        "Financial Reporting",
+        "Excel",
+        "QuickBooks",
+        "Tax Preparation"
+      ],
+      "recommended_skills": [
+        "SAP",
+        "Financial Analysis",
+        "Auditing",
+        "GAAP",
+        "Budgeting"
+      ],
+      "nice_to_have": [
+        "CPA",
+        "Forensic Accounting",
+        "ERP Systems"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
     },
-    "skill_aliases": {
-        "js": "JavaScript",
-        "reactjs": "React",
-        "react.js": "React",
-        "postgres": "PostgreSQL",
-        "postgresql": "PostgreSQL",
-        "py": "Python",
-        "ml": "Machine Learning",
-        "nlp": "Natural Language Processing",
-        "aws": "Amazon Web Services",
-        "ts": "TypeScript"
+    "advocate": {
+      "title": "Advocate",
+      "required_skills": [
+        "Legal Research",
+        "Case Law",
+        "Communication",
+        "Client Management"
+      ],
+      "recommended_skills": [
+        "Litigation",
+        "Contract Law",
+        "Legal Writing",
+        "Negotiation"
+      ],
+      "nice_to_have": [
+        "Arbitration",
+        "Mediation",
+        "Corporate Law"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "agriculture": {
+      "title": "Agriculture",
+      "required_skills": [
+        "Crop Management",
+        "Farming Techniques",
+        "Soil Science"
+      ],
+      "recommended_skills": [
+        "Agricultural Engineering",
+        "Irrigation",
+        "Pesticide Management"
+      ],
+      "nice_to_have": [
+        "Organic Farming",
+        "Hydroponics",
+        "Precision Agriculture"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "apparel": {
+      "title": "Apparel",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "architecture": {
+      "title": "Architecture",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "arts": {
+      "title": "Arts",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "automobile": {
+      "title": "Automobile",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "aviation": {
+      "title": "Aviation",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "bpo": {
+      "title": "BPO",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "banking": {
+      "title": "Banking",
+      "required_skills": [
+        "Banking Operations",
+        "Customer Service",
+        "Financial Products",
+        "Risk Management"
+      ],
+      "recommended_skills": [
+        "Loan Processing",
+        "Credit Analysis",
+        "Compliance",
+        "KYC"
+      ],
+      "nice_to_have": [
+        "Investment Banking",
+        "Treasury Management",
+        "Basel III"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "blockchain": {
+      "title": "Blockchain",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "building_and_construction": {
+      "title": "Building and Construction",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "business_analyst": {
+      "title": "Business Analyst",
+      "required_skills": [
+        "Business Analysis",
+        "Requirements Gathering",
+        "SQL",
+        "Excel",
+        "Data Analysis"
+      ],
+      "recommended_skills": [
+        "Power BI",
+        "Tableau",
+        "Agile",
+        "Jira",
+        "Process Modeling"
+      ],
+      "nice_to_have": [
+        "Python",
+        "SAP",
+        "Salesforce",
+        "BPMN"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "civil_engineer": {
+      "title": "Civil Engineer",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "consultant": {
+      "title": "Consultant",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "data_science": {
+      "title": "Data Science",
+      "required_skills": [
+        "Python",
+        "SQL",
+        "Machine Learning",
+        "Statistics",
+        "Pandas"
+      ],
+      "recommended_skills": [
+        "Scikit-learn",
+        "TensorFlow",
+        "PyTorch",
+        "Data Visualization",
+        "NumPy"
+      ],
+      "nice_to_have": [
+        "Big Data",
+        "Spark",
+        "NLP",
+        "Deep Learning",
+        "MLOps"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "database": {
+      "title": "Database",
+      "required_skills": [
+        "SQL",
+        "Database Design",
+        "MySQL",
+        "PostgreSQL",
+        "Data Modeling"
+      ],
+      "recommended_skills": [
+        "Oracle",
+        "MongoDB",
+        "Database Administration",
+        "ETL",
+        "Performance Tuning"
+      ],
+      "nice_to_have": [
+        "Cloud Databases",
+        "Replication",
+        "Sharding",
+        "Database Security"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "designing": {
+      "title": "Designing",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "devops": {
+      "title": "DevOps",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "digital_media": {
+      "title": "Digital Media",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "dotnet_developer": {
+      "title": "DotNet Developer",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "etl_developer": {
+      "title": "ETL Developer",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "education": {
+      "title": "Education",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "electrical_engineering": {
+      "title": "Electrical Engineering",
+      "required_skills": [
+        "Circuit Design",
+        "Electronics",
+        "AutoCAD",
+        "PCB Design",
+        "Testing"
+      ],
+      "recommended_skills": [
+        "Embedded Systems",
+        "MATLAB",
+        "PLC",
+        "SCADA",
+        "Power Systems"
+      ],
+      "nice_to_have": [
+        "IoT",
+        "RF Engineering",
+        "Signal Processing"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "finance": {
+      "title": "Finance",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "food_and_beverages": {
+      "title": "Food and Beverages",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "health_and_fitness": {
+      "title": "Health and Fitness",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "human_resources": {
+      "title": "Human Resources",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "information_technology": {
+      "title": "Information Technology",
+      "required_skills": [
+        "Networking",
+        "Windows Server",
+        "Linux",
+        "Troubleshooting",
+        "IT Support"
+      ],
+      "recommended_skills": [
+        "Active Directory",
+        "Cisco",
+        "Cloud Computing",
+        "Security",
+        "ITIL"
+      ],
+      "nice_to_have": [
+        "VMware",
+        "Azure",
+        "AWS",
+        "Firewall",
+        "VPN"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "java_developer": {
+      "title": "Java Developer",
+      "required_skills": [
+        "Java",
+        "Spring Framework",
+        "SQL",
+        "OOP",
+        "Git"
+      ],
+      "recommended_skills": [
+        "Spring Boot",
+        "Hibernate",
+        "Maven",
+        "REST API",
+        "Microservices"
+      ],
+      "nice_to_have": [
+        "Kafka",
+        "Docker",
+        "Kubernetes",
+        "JUnit",
+        "Design Patterns"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "management": {
+      "title": "Management",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "mechanical_engineer": {
+      "title": "Mechanical Engineer",
+      "required_skills": [
+        "CAD",
+        "SolidWorks",
+        "Mechanical Design",
+        "Manufacturing Processes"
+      ],
+      "recommended_skills": [
+        "AutoCAD",
+        "ANSYS",
+        "FEA",
+        "GD&T",
+        "Materials Science"
+      ],
+      "nice_to_have": [
+        "CNC",
+        "Robotics",
+        "Thermodynamics",
+        "Project Management"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "network_security_engineer": {
+      "title": "Network Security Engineer",
+      "required_skills": [
+        "Network Security",
+        "Firewalls",
+        "VPN",
+        "IDS/IPS",
+        "Security Protocols"
+      ],
+      "recommended_skills": [
+        "Penetration Testing",
+        "SIEM",
+        "Cisco",
+        "Encryption",
+        "Incident Response"
+      ],
+      "nice_to_have": [
+        "CISSP",
+        "CEH",
+        "Threat Intelligence",
+        "Zero Trust"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "operations_manager": {
+      "title": "Operations Manager",
+      "required_skills": [
+        "Operations Management",
+        "Process Improvement",
+        "Team Leadership",
+        "Budgeting"
+      ],
+      "recommended_skills": [
+        "Lean Six Sigma",
+        "Supply Chain",
+        "ERP",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "SAP",
+        "Logistics",
+        "Quality Management",
+        "Strategic Planning"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "pmo": {
+      "title": "PMO",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "public_relations": {
+      "title": "Public Relations",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "python_developer": {
+      "title": "Python Developer",
+      "required_skills": [
+        "Python",
+        "Django",
+        "Flask",
+        "SQL",
+        "Git"
+      ],
+      "recommended_skills": [
+        "REST API",
+        "FastAPI",
+        "PostgreSQL",
+        "Docker",
+        "Testing"
+      ],
+      "nice_to_have": [
+        "AWS",
+        "Celery",
+        "Redis",
+        "GraphQL",
+        "Microservices"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "react_developer": {
+      "title": "React Developer",
+      "required_skills": [
+        "React",
+        "JavaScript",
+        "HTML",
+        "CSS",
+        "Git"
+      ],
+      "recommended_skills": [
+        "Redux",
+        "TypeScript",
+        "Next.js",
+        "REST API",
+        "Webpack"
+      ],
+      "nice_to_have": [
+        "GraphQL",
+        "Testing Library",
+        "Styled Components",
+        "CI/CD"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "sap_developer": {
+      "title": "SAP Developer",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "sql_developer": {
+      "title": "SQL Developer",
+      "required_skills": [
+        "Communication",
+        "Problem Solving",
+        "Time Management"
+      ],
+      "recommended_skills": [
+        "MS Office",
+        "Teamwork",
+        "Project Management"
+      ],
+      "nice_to_have": [
+        "Leadership",
+        "Analytical Skills"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "sales": {
+      "title": "Sales",
+      "required_skills": [
+        "Sales",
+        "Customer Relationship Management",
+        "Communication",
+        "Negotiation"
+      ],
+      "recommended_skills": [
+        "CRM Software",
+        "Lead Generation",
+        "Business Development",
+        "Salesforce"
+      ],
+      "nice_to_have": [
+        "Account Management",
+        "Market Analysis",
+        "Cold Calling"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "testing": {
+      "title": "Testing",
+      "required_skills": [
+        "Manual Testing",
+        "Test Cases",
+        "Bug Tracking",
+        "QA",
+        "Jira"
+      ],
+      "recommended_skills": [
+        "Selenium",
+        "Automation Testing",
+        "API Testing",
+        "Test Planning"
+      ],
+      "nice_to_have": [
+        "Performance Testing",
+        "JMeter",
+        "Cypress",
+        "CI/CD"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
+    },
+    "web_designing": {
+      "title": "Web Designing",
+      "required_skills": [
+        "HTML",
+        "CSS",
+        "Adobe Photoshop",
+        "UI Design",
+        "Responsive Design"
+      ],
+      "recommended_skills": [
+        "Figma",
+        "Adobe XD",
+        "JavaScript",
+        "UX Design",
+        "Prototyping"
+      ],
+      "nice_to_have": [
+        "Animation",
+        "Illustrator",
+        "Sketch",
+        "User Research"
+      ],
+      "weights": {
+        "required": 1.0,
+        "recommended": 0.6,
+        "nice_to_have": 0.3
+      }
     }
+  },
+  "skill_aliases": {
+    "js": "JavaScript",
+    "reactjs": "React",
+    "py": "Python",
+    "ml": "Machine Learning",
+    "aws": "Amazon Web Services",
+    "gcp": "Google Cloud Platform",
+    "k8s": "Kubernetes"
+  }
 }

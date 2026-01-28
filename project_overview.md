@@ -10,55 +10,32 @@
 > fill a latency versus depth gap in candidate search, synergizes statistical classification with semantic analysis
 
 ### Architecture Choice
-> [!datasetused]  https://huggingface.co/datasets/MikePfunk28/resume-training-dataset
-- 22,855 samples of data
--  training AI models on resume analysis, generation, and career development tasks, Each entry includes structured conversations between users seeking resume help and AI assistants providing feedback, making it ideal for training models to understand professional writing patterns, critique resumes, and suggest improvements.
+> [!datasetused]  https://huggingface.co/datasets/ahmedheakl/resume-atlas
+- 24,000+ labeled resume samples across 50+ job categories
+- Structured dataset with resume text and corresponding job category labels, making it ideal for training classification models to categorize resumes by professional domain.
 - This dataset can be used for:
-    - Resume Generation: Training models to create professional resumes
-    - Resume Critique: Teaching AI to identify areas for improvement
-    - Visual Resume Analysis: Processing resume images and extracting information
-    - OCR and Layout Understanding: Learning to parse visual resume formats
-    - Multi-modal Understanding: Combining text and visual elements in resumes
-    - Career Coaching: Developing conversational AI for career advice
-    - Professional Writing Style Transfer: Learning formal business writing patterns
-    - Skills Extraction: Identifying technical and soft skills from text and images
-    - Multi-language Professional Documents: Handling resumes in multiple languages
+    - **Resume Classification**: Training models to categorize resumes by job domain
+    - **Skills Extraction**: Identifying technical and soft skills from resume text
+    - **Job Matching**: Aligning candidates with appropriate job categories
+    - **Market Analysis**: Understanding skill requirements across different industries
+    - **Gap Analysis**: Identifying skill deficiencies relative to job requirements
 - dataset structure
-two types of data:
-1. Text Conversations (JSONL format):
-[
-  {
-    "role": "system",
-    "content": "You are an expert resume assistant. You help users write, critique, and improve their resumes to land their dream job."
-  },
-  {
-    "role": "user", 
-    "content": "Critique this resume and suggest improvements: [resume content]"
-  },
-  {
-    "role": "assistant",
-    "content": "This resume could benefit from clearer formatting, stronger action verbs, and more quantified achievements."
-  }
-]
+CSV format with two primary columns:
+1. **Text**: Full resume content as extracted text
+2. **Category**: Job category label (e.g., "Accountant", "HR", "Java Developer", "Data Science")
 
-2. resume image
-Format: PNG/JPG/PDF
-Content: Visual resumes, scanned documents, designed layouts
-Use cases: Training OCR models, layout analysis, visual design evaluation
+Example:
+```
+Category,Text
+"Accountant","Education: Bachelor of Commerce...Skills: QuickBooks, Excel, SAP..."
+"Java Developer","Experience: Software Engineer at TechCorp...Skills: Java, Spring Boot, MySQL..."
+```
 
 - data fields
-For text data:
-- role: The speaker in the conversation ("system", "user", or "assistant")
-- content: The message content, which may include:
-    - Full resume text
-    - Specific sections (experience, education, skills)
-    - Critique and improvement suggestions
-    - Career advice
-For image data:
-- image: Resume image file
-- text: Extracted or annotated text from the image
-- layout: Information about resume structure and design
-- metadata: Image properties, format type, visual elements
+- **Category**: Job category or professional domain (string)
+  - Examples: "Accountant", "Advocate", "Agriculture", "Banking", "HR", "Information Technology", "Java Developer", "Python Developer", "Sales", "Testing"
+- **Text**: Complete resume content as extracted/cleaned text (string)
+  - Includes: Education background, work experience, skills, certifications, projects
 
 - programming languages detected
 The dataset includes mentions of various programming languages and technologies commonly found in technical resumes:
@@ -102,14 +79,13 @@ Databases: MySQL, PostgreSQL, MongoDB, Oracle, Redis
         - Regularly update models as resume trends change
         - Use responsibly for helping, not gatekeeping, job seekers
 - citation
-@dataset{pfundt2024resume,
-  author = {Pfundt, Mike},
-  title = {Resume Training Dataset},
+@dataset{heakl2024resume,
+  author = {Heakl, Ahmed},
+  title = {Resume Atlas Dataset},
   year = {2024},
   publisher = {HuggingFace},
-  url = {https://huggingface.co/datasets/MikePfunk28/resume-training-dataset},
-  doi = {[If you get a DOI]},
-  license = {MIT}
+  url = {https://huggingface.co/datasets/ahmedheakl/resume-atlas},
+  license = {Apache 2.0}
 }
 - additional information
     - Maintenance
@@ -124,7 +100,7 @@ Databases: MySQL, PostgreSQL, MongoDB, Oracle, Redis
     Creating specialized subsets for specific use cases
     Adding metadata for better filtering
 
-> [!MODELTRAINED/FINE-TUNEDonMikePfunk28dataset] https://huggingface.co/kiritps/resume-ai-assistant
+> [!NOTE] **Original Specification Dataset**: The `OUTPUT_SPECIFICATION.md` originally referenced `MikePfunk28/resume-training-dataset`, which is a conversational dataset for resume critique (not suitable for classification). This implementation uses `ahmedheakl/resume-atlas` instead, which provides structured labeled data for job category classification.
 notebook: 
 !pip install -U transformer
 # Use a pipeline as a high-level helper
@@ -141,7 +117,7 @@ model = AutoModel.from_pretrained("kiritps/resume-ai-assistant", dtype="auto")
     - License: Apache 2.0
     - Specialized for: Resume writing, career guidance, job search assistance
 Model Sources
-- Training Dataset: MikePfunk28/resume-training-dataset
+- Training Dataset: ahmedheakl/resume-atlas
 - Fine-tuning Method: LoRA (Low-Rank Adaptation)
 
 - Direct Use
@@ -188,12 +164,12 @@ Model Sources
         - Consider cultural context and local job market practices
         - Use as a starting point rather than a final solution for career documents
 Training Data
-The model was fine-tuned on the MikePfunk28/resume-training-dataset, which contains:
-- Dataset Size: 22,855 conversational examples
-- Format: Human-Assistant dialogue pairs focused on resume and career topics
-- Content: Professional advice on resume writing, interview preparation, career development, and job search strategies
+The classification model was trained on ahmedheakl/resume-atlas, which contains:
+- Dataset Size: 24,000+ labeled resumes
+- Format: CSV with resume text and job category labels
+- Content: Real-world resumes across 50+ professional domains
 - Language: English
-- Quality: Curated dataset with professional career guidance content
+- Quality: Labeled dataset for supervised classification training
 
 Training Procedure
 Preprocessing
