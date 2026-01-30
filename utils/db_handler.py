@@ -129,7 +129,7 @@ class DatabaseManager:
                 ]
                 
                 if skills_entries:
-                    self.supabase.table("skills").insert(skills_entries).execute()
+                    self.supabase.table("resume_skills").insert(skills_entries).execute()
                     
                 return resume_id
         except Exception as e:
@@ -143,7 +143,7 @@ class DatabaseManager:
         
         try:
             return self.supabase.table("resumes")\
-                .select("*, skills(*)")\
+                .select("*, resume_skills(*)")\
                 .eq("user_id", user_id)\
                 .order("created_at", desc=True)\
                 .execute().data
@@ -163,7 +163,7 @@ class DatabaseManager:
             # OR we need to handle ignoring the current one if it's already inserted.
             # Best pattern: Call this BEFORE inserting the new one.
             response = self.supabase.table("resumes")\
-                .select("*, skills(*)")\
+                .select("*, resume_skills(*)")\
                 .eq("user_id", user_id)\
                 .eq("filename", filename)\
                 .order("created_at", desc=True)\
@@ -175,3 +175,103 @@ class DatabaseManager:
             return None
         except Exception as e:
             return None
+
+    def get_market_standards(self, role_slug_or_title: str) -> Optional[Dict]:
+        """
+        Fetch job category details and related skills from the database.
+        Returns a dict structure compatible with the GapAnalyzer.
+        """
+        if not self.supabase: return None
+        
+        try:
+            # Normalize input to slug (simple approach)
+            slug = role_slug_or_title.lower().replace(" ", "_").replace("/", "_")
+            
+            # 1. Fetch Job Category
+            # We try exact match on slug first
+            cat_res = self.supabase.table("job_categories")\
+                .select("*")\
+                .eq("slug", slug)\
+                .execute()
+                
+            if not cat_res.data:
+                # Fallback: try to find by title ilike
+                cat_res = self.supabase.table("job_categories")\
+                    .select("*")\
+                    .ilike("title", role_slug_or_title)\
+                    .execute()
+                    
+            if not cat_res.data:
+                return None
+            
+            cat_data = cat_res.data[0]
+            cat_id = cat_data["id"]
+            
+            # 2. Fetch Skills
+            # Join market_standards -> skills
+            # Note: Supabase-py select query with join
+            standards_res = self.supabase.table("market_standards")\
+                .select("importance_level, skills(name)")\
+                .eq("job_category_id", cat_id)\
+                .execute()
+                
+            result = {
+                "title": cat_data["title"],
+                "weights": cat_data.get("weights", {}),
+                "required_skills": [],
+                "recommended_skills": [],
+                "nice_to_have": []
+            }
+            
+            for item in standards_res.data:
+                # item["skills"] is a dict {"name": "..."} because it's a join on FK
+                skill_name = item["skills"]["name"] if item.get("skills") else "Unknown"
+                importance = item["importance_level"]
+                
+                if importance == "required":
+                    result["required_skills"].append(skill_name)
+                elif importance == "recommended":
+                    result["recommended_skills"].append(skill_name)
+                elif importance == "nice_to_have":
+                    result["nice_to_have"].append(skill_name)
+            
+            return result
+        except Exception as e:
+            # st.error(f"DB Error fetching standards: {e}")
+            return None
+
+    def get_learning_resources(self, skill_names: List[str]) -> Dict[str, List[Dict]]:
+        """
+        Fetch learning resources for a list of skills.
+        Returns a dict {skill_name: [resources]}.
+        """
+        if not self.supabase or not skill_names: return {}
+        
+        try:
+            # We can't efficiently do "WHERE skill_name IN (...)" with join in one go 
+            # unless we query learning_resources joined with skills filtered by name list.
+            # Supabase-py 'in_' filter: .in_("skills.name", skill_names) might work with !inner join.
+            
+            # Using !inner to filter by related table
+            res = self.supabase.table("learning_resources")\
+                .select("title, url, resource_type, difficulty, skills!inner(name)")\
+                .in_("skills.name", skill_names)\
+                .execute()
+                
+            output = {}
+            for item in res.data:
+                skill_name = item["skills"]["name"]
+                if skill_name not in output:
+                    output[skill_name] = []
+                
+                output[skill_name].append({
+                    "title": item["title"],
+                    "url": item["url"],
+                    "type": item.get("resource_type", "Resource"),
+                    "difficulty": item.get("difficulty", "General")
+                })
+            return output
+        except Exception as e:
+            # st.error(f"DB Error fetching resources: {e}")
+            return {}
+

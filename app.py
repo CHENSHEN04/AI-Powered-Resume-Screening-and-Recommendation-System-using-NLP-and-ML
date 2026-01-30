@@ -239,7 +239,7 @@ def main():
                                 
                                 # 4. Gap Analysis
                                 from utils.gap_analyzer import GapAnalyzer
-                                analyzer = GapAnalyzer()
+                                analyzer = GapAnalyzer(db)
                                 role_cats = extractor.map_to_category(skill_data["all_skills"])
                                 top_skill_cat = list(role_cats.keys())[0] if role_cats else "Unknown"
                                 

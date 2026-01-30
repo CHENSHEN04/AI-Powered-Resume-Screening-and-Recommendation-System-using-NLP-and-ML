@@ -30,8 +30,14 @@ class GapAnalyzer:
     Analyzes skill gaps and provides recommendations based on job category.
     """
     
-    def __init__(self):
-        """Initialize analyzer by loading standards and resources."""
+    def __init__(self, db_manager=None):
+        """
+        Initialize analyzer by loading standards and resources.
+        
+        Args:
+            db_manager: Optional DatabaseManager instance for live data fetching.
+        """
+        self.db_manager = db_manager
         self.standards = self._load_json(MARKET_STANDARDS_PATH)
         self.resources = self._load_json(LEARNING_RESOURCES_PATH)
         
@@ -49,27 +55,28 @@ class GapAnalyzer:
             
     def analyze_gaps(self, user_skills: List[str], target_role: str) -> Dict[str, Any]:
         """
-        Identify missing skills for a target role.
+        Identify missing skills for a target role, prioritizing DB data.
         
         Args:
             user_skills: List of skills extracted from resume
-            target_role: Target job category (key in market_standards)
+            target_role: Target job category (key or title)
             
         Returns:
-            Dictionary containing:
-            - missing_required: List of critical missing skills
-            - missing_recommended: List of useful missing skills
-            - match_percentage: Weighted score (0-100)
-            - recommendations: List of textual recommendations
+            Dictionary containing gaps and recommendations.
         """
         # Normalize user skills for comparison
         user_skills_set = {s.lower() for s in user_skills}
         
-        # Get role standards
-        # Handle joblib model classes vs json keys mismatch if necessary
-        # Assuming the classifier returns the key or we normalize it
-        role_key = self._normalize_role_name(target_role)
-        role_data = self.standards.get("job_categories", {}).get(role_key)
+        role_data = None
+        
+        # 1. Try fetching from DB
+        if self.db_manager:
+            role_data = self.db_manager.get_market_standards(target_role)
+            
+        # 2. Fallback to Local JSON
+        if not role_data:
+            role_key = self._normalize_role_name(target_role)
+            role_data = self.standards.get("job_categories", {}).get(role_key)
         
         if not role_data:
             return {
@@ -109,6 +116,9 @@ class GapAnalyzer:
             missing_required, missing_recommended, role_data.get("title", target_role)
         )
         
+        # Get Learning Resources (Hybrid DB + JSON)
+        learning_paths = self._get_learning_resources(missing_required + missing_recommended)
+        
         return {
             "role": role_data.get("title", target_role),
             "missing_required": missing_required,
@@ -116,7 +126,7 @@ class GapAnalyzer:
             "missing_nice_to_have": missing_nice,
             "match_percentage": round(match_percentage, 1),
             "recommendations": recommendations,
-            "learning_paths": self._get_learning_resources(missing_required + missing_recommended)
+            "learning_paths": learning_paths
         }
     
     def _normalize_role_name(self, role_name: str) -> str:
@@ -156,13 +166,22 @@ class GapAnalyzer:
         return recs
 
     def _get_learning_resources(self, missing_skills: List[str]) -> Dict[str, List[Dict]]:
-        """Get learning resources for missing skills."""
+        """Get learning resources for missing skills (DB + JSON fallback)."""
         paths = {}
+        
+        # 1. Try DB
+        if self.db_manager:
+            db_paths = self.db_manager.get_learning_resources(missing_skills)
+            paths.update(db_paths)
+            
+        # 2. Fill gaps from JSON
+        # Only fetch for skills not found or simple merge
         all_resources = self.resources.get("resources", {})
         
         for skill in missing_skills:
-            skill_key = skill.lower()
-            if skill_key in all_resources:
-                paths[skill] = all_resources[skill_key]
+            if skill not in paths: # Only fallback if completely missing from DB result
+                skill_key = skill.lower()
+                if skill_key in all_resources:
+                    paths[skill] = all_resources[skill_key]
                 
         return paths
