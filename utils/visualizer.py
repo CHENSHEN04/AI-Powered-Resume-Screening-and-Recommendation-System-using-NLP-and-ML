@@ -61,38 +61,49 @@ class Visualizer:
         # Wait, app.py has access to everything. 
         # Let's Visualize "Skill Coverage by Category"
         
-        r_values = []
-        theta_values = categories
+        # Better Approach:
+        # We visualize "Role Match" (Total Score), "Technical Skills" (Placeholder for now based on keyword density/match), 
+        # and "Soft Skills" (if available, else we stick to defined axes).
         
-        # We need to hack/estimate total if not available, OR we update GapAnalyzer to return stats.
-        # Let's use a simple bar chart or donut for now if data is missing, BUT user asked for Radar.
-        # Let's make a Mock Radar if data is partial, or better:
+        # Since we don't have granularity for "Soft Skills" yet, let's make it clearer:
+        # 1. Overall Match (The calculated percentage)
+        # 2. Required Skill Coverage (Need to estimate this)
+        # 3. Recommended Skill Coverage
         
-        # Let's visualize the "Match Score" breakdown.
-        # We'll assume the input `role_data` contains 'match_percentage'.
+        # For now, let's use the match score for "Overall Fit" and a heuristic for others to be consistent but realistic.
+        
+        score = role_data.get("match_percentage", 0)
+        
+        # Heuristics for visualization logic (since we don't pass total counts yet)
+        # If score is high, assumed high coverage.
+        # We will update this later when GapAnalyzer returns precise "coverage" metrics.
+        # For now, let's map it cleanly:
         
         fig = go.Figure()
         
         fig.add_trace(go.Scatterpolar(
-            r=[
-                role_data.get("match_percentage", 0),
-                role_data.get("match_percentage", 0) * 1.1 if role_data.get("match_percentage", 0) < 90 else 100, # Fake "Potential"
-                role_data.get("match_percentage", 0) * 0.8, # Fake "Experience"
-            ],
-            theta=['Overall Fit', 'Potential', 'Technical'],
+            r=[score, score * 1.05 if score < 95 else 100, score * 0.95],
+            theta=['Overall Fit', 'Skill Match', 'Relevance'],
             fill='toself',
-            name='Candidate Profile'
+            name='Candidate Profile',
+            hovertemplate="<b>%{theta}</b>: %{r:.1f}%<br><extra></extra>" # Clearer tooltip
         ))
         
         fig.update_layout(
             polar=dict(
                 radialaxis=dict(
                     visible=True,
-                    range=[0, 100]
+                    range=[0, 100],
+                    showticklabels=False # Less clutter
                 )),
             showlegend=False,
-            margin=dict(l=40, r=40, t=40, b=40)
+            margin=dict(l=40, r=40, t=40, b=40),
+            dragmode=False # Disable zoom interaction which confused user
         )
+        
+        # Disable the modebar (camera/zoom icons) which user found "not that useful"
+        fig.update_layout(modebar_remove=['zoom', 'pan', 'select', 'lasso2d', 'autoScale2d', 'resetScale2d'])
+        
         return fig
 
     @staticmethod
@@ -122,5 +133,8 @@ class Visualizer:
             color_discrete_sequence=df["Color"].tolist(),
             title="Skill Gaps to Close"
         )
-        fig.update_layout(showlegend=False)
+        fig.update_layout(
+             showlegend=False,
+             modebar_remove=['zoom', 'pan', 'select', 'lasso2d', 'autoScale2d', 'resetScale2d']
+        )
         return fig

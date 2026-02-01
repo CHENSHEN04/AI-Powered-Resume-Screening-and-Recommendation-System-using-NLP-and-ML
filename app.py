@@ -20,10 +20,23 @@ from utils.rate_limiter import RateLimiter, show_rate_limit_info
 # ==============================================================================
 st.set_page_config(
     page_title="AI Resume Screener",
-    page_icon="📄",
+    page_icon="🚀",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# --- DEBUG INFO (START) ---
+import sys
+import os
+# st.error(f"Python Executable: {sys.executable}")
+# st.write(f"Sys Path: {sys.path}")
+try:
+    import reportlab
+    # st.success(f"ReportLab found at: {reportlab.__file__}")
+except ImportError as e:
+    st.error(f"ReportLab Import Error: {e}")
+    os.system(f"{sys.executable} -m pip install reportlab") # Tripwire: Try to auto-install if missing
+# --- DEBUG INFO (END) ---
 
 # ==============================================================================
 # Custom CSS
@@ -221,72 +234,79 @@ def main():
                         else:
                             st.success(f"✅ Ready: {uploaded_file.name}")
                             if st.button("🚀 Analyze Now", type="primary"):
-                                with st.spinner("Analyzing..."):
-                                    # 1. Parse
-                                    from utils.parser import ResumeParser
-                                    parser = ResumeParser()
-                                    uploaded_file.seek(0)
-                                    parse_result = parser.parse(uploaded_file.read(), uploaded_file.name)
+                                progress_bar = st.progress(0, text="Starting analysis...")
+                                
+                                # 1. Parse
+                                progress_bar.progress(20, text="Parsing resume document...")
+                                from utils.parser import ResumeParser
+                                parser = ResumeParser()
+                                uploaded_file.seek(0)
+                                parse_result = parser.parse(uploaded_file.read(), uploaded_file.name)
+                                
+                                if parse_result.success:
+                                    st.session_state["parse_result"] = parse_result
                                     
-                                    if parse_result.success:
-                                        st.session_state["parse_result"] = parse_result
-                                        
-                                        # 2. Extract
-                                        from utils.skill_extractor import SkillExtractor
-                                        extractor = SkillExtractor()
-                                        skill_data = extractor.extract_skills(parse_result.text)
-                                        st.session_state["skill_data"] = skill_data
-                                        
-                                        # 3. Classify
-                                        from utils.classifier import JobClassifier
-                                        classifier = JobClassifier()
-                                        prediction = classifier.predict(parse_result.text)
-                                        st.session_state["prediction"] = prediction
-                                        st.session_state["explanation"] = classifier.explain_prediction(parse_result.text)
-                                        
-                                        # 4. Gap Analysis
-                                        from utils.gap_analyzer import GapAnalyzer
-                                        analyzer = GapAnalyzer(db)
-                                        role_cats = extractor.map_to_category(skill_data["all_skills"])
-                                        top_skill_cat = list(role_cats.keys())[0] if role_cats else "Unknown"
-                                        
-                                        # Smart Fallback: Use skill-based role if model returns "Unknown" or numeric garbage (e.g. "6")
-                                        target_role = prediction["top_category"]
-                                        if target_role == "Unknown" or str(target_role).isdigit():
-                                            target_role = top_skill_cat
-                                        
-                                        st.session_state["target_role"] = target_role # Store for global access
+                                    # 2. Extract
+                                    progress_bar.progress(40, text="Extracting technical skills...")
+                                    from utils.skill_extractor import SkillExtractor
+                                    extractor = SkillExtractor()
+                                    skill_data = extractor.extract_skills(parse_result.text)
+                                    st.session_state["skill_data"] = skill_data
+                                    
+                                    # 3. Classify
+                                    progress_bar.progress(60, text="Identifying job role...")
+                                    from utils.classifier import JobClassifier
+                                    classifier = JobClassifier()
+                                    prediction = classifier.predict(parse_result.text)
+                                    st.session_state["prediction"] = prediction
+                                    st.session_state["explanation"] = classifier.explain_prediction(parse_result.text)
+                                    
+                                    # 4. Gap Analysis
+                                    progress_bar.progress(80, text="Analyzing skill gaps & generating plan...")
+                                    from utils.gap_analyzer import GapAnalyzer
+                                    analyzer = GapAnalyzer(db)
+                                    role_cats = extractor.map_to_category(skill_data["all_skills"])
+                                    top_skill_cat = list(role_cats.keys())[0] if role_cats else "Unknown"
+                                    
+                                    # Smart Fallback: Use skill-based role if model returns "Unknown" or numeric garbage (e.g. "6")
+                                    target_role = prediction["top_category"]
+                                    if target_role == "Unknown" or str(target_role).isdigit():
+                                        target_role = top_skill_cat
+                                    
+                                    st.session_state["target_role"] = target_role # Store for global access
 
-                                        # Use skill_data["all_skills"] which exists
-                                        analysis = analyzer.analyze_gaps(skill_data["all_skills"], target_role)
-                                        st.session_state["gap_analysis"] = analysis
-                                        st.session_state["analyzed"] = True
+                                    # Use skill_data["all_skills"] which exists
+                                    analysis = analyzer.analyze_gaps(skill_data["all_skills"], target_role)
+                                    st.session_state["gap_analysis"] = analysis
+                                    st.session_state["analyzed"] = True
 
-                                        # 5. Calculate Growth Logic
-                                        from utils.growth_tracker import GrowthTracker
-                                        previous_version = None
-                                        if st.session_state.get("user"):
-                                            previous_version = db.get_previous_version(st.session_state["user"].id, uploaded_file.name)
-                                        
-                                        growth = GrowthTracker.calculate_growth(analysis, skill_data["all_skills"], previous_version)
-                                        st.session_state["growth_data"] = growth
+                                    # 5. Calculate Growth Logic
+                                    from utils.growth_tracker import GrowthTracker
+                                    previous_version = None
+                                    if st.session_state.get("user"):
+                                        previous_version = db.get_previous_version(st.session_state["user"].id, uploaded_file.name)
+                                    
+                                    growth = GrowthTracker.calculate_growth(analysis, skill_data["all_skills"], previous_version)
+                                    st.session_state["growth_data"] = growth
 
-                                        # 6. Save to DB if logged in
-                                        if st.session_state["user"]:
-                                            db.save_resume_analysis(
-                                                st.session_state["user"].id,
-                                                {
-                                                    "filename": uploaded_file.name,
-                                                    "storage_path": f"resumes/{st.session_state['user'].id}/{uploaded_file.name}",
-                                                    "parsed_text": parse_result.text,
-                                                    "page_count": parse_result.page_count,
-                                                    "confidence_score": parse_result.confidence,
-                                                    "predicted_role": target_role,
-                                                    "match_score": analysis["match_percentage"],
-                                                    "skills": [{"name": s, "category": "extracted"} for s in skill_data["all_skills"]]
-                                                }
-                                            )
-                                        st.rerun()
+                                    # 6. Save to DB if logged in
+                                    progress_bar.progress(90, text="Finalizing report...")
+                                    if st.session_state["user"]:
+                                        db.save_resume_analysis(
+                                            st.session_state["user"].id,
+                                            {
+                                                "filename": uploaded_file.name,
+                                                "storage_path": f"resumes/{st.session_state['user'].id}/{uploaded_file.name}",
+                                                "parsed_text": parse_result.text,
+                                                "page_count": parse_result.page_count,
+                                                "confidence_score": parse_result.confidence,
+                                                "predicted_role": target_role,
+                                                "match_score": analysis["match_percentage"],
+                                                "skills": [{"name": s, "category": "extracted"} for s in skill_data["all_skills"]]
+                                            }
+                                        )
+                                    
+                                    progress_bar.experiment_rerun() if hasattr(st, "experiment_rerun") else st.rerun()
 
         else:
             # Show Dashboard (Similar to before)
@@ -344,6 +364,7 @@ def main():
             # Explainability Section
             if st.session_state.get("explanation"):
                 with st.expander("❓ Why this role?"):
+                    st.info("This chart displays the specific keywords in your resume that most strongly influenced the AI's classification decision. Taller bars indicate a higher impact.")
                     expl = st.session_state["explanation"]
                     if expl["positive"]:
                         st.caption("Top matching keywords found in your resume:")
@@ -353,46 +374,108 @@ def main():
                     elif expl["negative"]:
                         st.caption("These keywords negatively impacted the match:")
                         n_df = pd.DataFrame(expl["negative"], columns=["Keyword", "Impact"])
-                        st.bar_chart(n_df.set_index("Keyword"), color="#E74C3C")
-                    else:
-                        st.info("No specific keywords dominated the decision (likely based on general semantic context).")
-
             # Row 2: Charts
-            c1, c2 = st.columns(2)
-            with c1:
-                st.subheader("Skill Fit Radar")
-                st.plotly_chart(Visualizer.plot_radar_chart([], analysis), use_container_width=True)
-            with c2:
-                st.subheader("Gap Breakdown")
-                st.plotly_chart(Visualizer.plot_skill_gap_chart(analysis), use_container_width=True)
+            st.subheader("Skill Gap Overview")
+            
+            # Interactive Chart
+            # We use on_select to capture clicks. Requires Streamlit 1.35+
+            # If selection data exists, we switch the "Tab" mode to "Gaps"
+            
+            # Create interactive chart
+            gap_fig = Visualizer.plot_skill_gap_chart(analysis)
+            gap_fig.update_layout(clickmode='event+select')
+            
+            event = st.plotly_chart(
+                gap_fig, 
+                use_container_width=True, 
+                on_select="rerun",
+                key="gap_chart"
+            )
+            
+            # Auto-navigate to "Gaps" if clicked
+            # Default view
+            if "view_mode" not in st.session_state:
+                st.session_state["view_mode"] = "✅ Skills"
+                
+            if event and event["selection"]["points"]:
+                # User clicked a bar
+                st.session_state["view_mode"] = "❌ Gaps"
+                # Optionally filter? For now just switch tab is enough as requested.
 
-            # Row 3: Tabs
+            # Row 3: Content Sections (Replaces Tabs for programmatic control)
             st.markdown("---")
-            t1, t2, t3 = st.tabs(["✅ Skills", "❌ Gaps", "🎓 Plan"])
-            with t1: 
+            
+            # Navigation (Radio buttons acting as Tabs)
+            # Custom CSS to make radio buttons look like tabs? 
+            # Standard radio horizontal is functional enough.
+            view_mode = st.radio(
+                "View Details:", 
+                ["✅ Skills", "❌ Gaps", "🎓 Plan"], 
+                horizontal=True,
+                key="view_mode_widget",
+                index=["✅ Skills", "❌ Gaps", "🎓 Plan"].index(st.session_state.get("view_mode", "✅ Skills"))
+            )
+            
+            # Sync session state if user clicks radio manually
+            if view_mode != st.session_state.get("view_mode"):
+               st.session_state["view_mode"] = view_mode
+               st.rerun()
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            if view_mode == "✅ Skills": 
                 if skill_data["all_skills"]:
-                    for skill in skill_data["all_skills"]:
-                        st.markdown(f"- {skill}")
+                    st.success(f"**{len(skill_data['all_skills'])} Skills identified:**")
+                    # Display as tags
+                    st.markdown(", ".join([f"`{s}`" for s in skill_data["all_skills"]]))
                 else:
                     st.info("No technical skills detected")
-            with t2:
-                st.markdown("**Missing Required:**")
-                if analysis["missing_required"]:
-                    for skill in analysis["missing_required"]:
-                        st.markdown(f"- {skill}")
-                else:
-                    st.success("✅ You have all required skills!")
                     
-                st.markdown("**Missing Recommended:**")
-                if analysis["missing_recommended"]:
-                    for skill in analysis["missing_recommended"]:
-                        st.markdown(f"- {skill}")
-                else:
-                    st.success("✅ You have all recommended skills!")
-            with t3:
+            elif view_mode == "❌ Gaps":
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.error("Missing Required")
+                    if analysis["missing_required"]:
+                        for skill in analysis["missing_required"]:
+                            st.markdown(f"• {skill}")
+                    else:
+                        st.caption("None! Excellent.")
+                
+                with c2:
+                    st.warning("Missing Recommended")
+                    if analysis["missing_recommended"]:
+                        for skill in analysis["missing_recommended"]:
+                            st.markdown(f"• {skill}")
+                    else:
+                        st.caption("None! Great fit.")
+                        
+            elif view_mode == "🎓 Plan":
+                st.markdown("### Recommended Learning Paths")
                 for skill, res in analysis["learning_paths"].items():
-                    with st.expander(f"📚 {skill}"):
+                    with st.expander(f"📚 Learn: {skill}"):
                         for r in res: st.markdown(f"- [{r['title']}]({r['url']})")
+            
+            st.markdown("---")
+            
+            # Explainability Section
+            if st.session_state.get("explanation"):
+                st.subheader("💡 Analysis Insights")
+                expl = st.session_state["explanation"]
+                
+                # Text Summary
+                top_keywords = [k[0] for k in expl["positive"][:3]]
+                if top_keywords:
+                    keywords_str = ", ".join([f"**{k}**" for k in top_keywords])
+                    st.info(f"Your profile matches **{target_role}** because it highlights: {keywords_str}.")
+                
+                # Detailed Chart (Sorted)
+                with st.expander("📊 View Detailed Keyword Impact"):
+                    st.caption("How strongly each word contributed to the decision (Sorted by Impact):")
+                    if expl["positive"]:
+                        p_df = pd.DataFrame(expl["positive"], columns=["Keyword", "Impact"])
+                        # Sort descending
+                        p_df = p_df.sort_values(by="Impact", ascending=False)
+                        st.bar_chart(p_df.set_index("Keyword"), color="#2E86C1")
 
     # --- HISTORY TAB ---
     if st.session_state["user"]:
