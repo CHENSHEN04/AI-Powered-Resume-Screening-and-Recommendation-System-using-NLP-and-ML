@@ -48,6 +48,7 @@ matplotlib>=3.8.0
 # ------------------------------------------------------------------------------
 tenacity>=8.2.0  # Retry logic for fallback pipeline
 psutil>=5.9.0    # Memory monitoring
+reportlab>=4.0.0 # PDF Generation
 
 # ------------------------------------------------------------------------------
 # Testing

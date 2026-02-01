@@ -28,6 +28,7 @@ ENCODER_MODEL_PATH = MODELS_DIR / "encoder.joblib"
 # ==============================================================================
 # Job Classifier Class
 # ==============================================================================
+class JobClassifier:
     """
     Predicts job category for a given resume text using TF-IDF + SVM + BERT (Hybrid).
     """
@@ -157,3 +158,68 @@ ENCODER_MODEL_PATH = MODELS_DIR / "encoder.joblib"
                 "confidence": 0.0,
                 "all_scores": {}
             }
+
+    def explain_prediction(self, text: str, top_n: int = 10) -> Dict[str, List[Tuple[str, float]]]:
+        """
+        Explain the prediction by extracting contributing keywords.
+        Uses SVM coefficients if available.
+        
+        Args:
+            text: Cleaned resume text
+            top_n: Number of keywords to return
+            
+        Returns:
+            Dict containing 'positive' and 'negative' keywords with weights.
+        """
+        if not text or not self.clf or not self.tfidf:
+            return {"positive": [], "negative": []}
+            
+        try:
+            # 1. Get predicted class index
+            vectors = self.tfidf.transform([text])
+            prediction_idx = self.clf.predict(vectors)[0]
+            
+            # 2. Check for linear coefficients
+            if not hasattr(self.clf, "coef_"):
+                return {"positive": [], "negative": []}
+                
+            # 3. Get Feature Names
+            feature_names = self.tfidf.get_feature_names_out()
+            
+            # 4. Get Coefficients for the predicted class
+            # For multi-class, coef_ is shape (n_classes, n_features)
+            # For binary, it's (1, n_features)
+            if self.clf.coef_.shape[0] > 1:
+                class_coefs = self.clf.coef_[prediction_idx]
+            else:
+                # Binary case (not likely here but good to handle)
+                class_coefs = self.clf.coef_[0] if prediction_idx == 1 else -self.clf.coef_[0]
+            
+            # 5. Filter for features present in the input text ONLY
+            # This is important: we only care about words the USER actually wrote.
+            row_indices, col_indices = vectors.nonzero()
+            present_features_indices = col_indices  # Indices of features in input
+            
+            # Create (word, score) pairs only for present features
+            feature_scores = []
+            for idx in present_features_indices:
+                score = class_coefs[idx] * vectors[0, idx] # Weight * TF-IDF value
+                feature_scores.append((feature_names[idx], score))
+                
+            # 6. Sort and Separate
+            feature_scores.sort(key=lambda x: x[1], reverse=True)
+            
+            positive = [x for x in feature_scores if x[1] > 0][:top_n]
+            negative = [x for x in feature_scores if x[1] < 0][-top_n:] # Least negative? Or most negative?
+            # Actually for "Why NOT this role", we'd look at negative. 
+            # For "Why this role", we mostly care about positive.
+            
+            return {
+                "positive": positive, 
+                "negative": sorted(negative, key=lambda x: x[1]) # Most negative first
+            }
+            
+        except Exception as e:
+            log_error(get_error(ErrorCode.PROCESSING_ERROR), 
+                     {"context": "Explaining prediction", "error": str(e)})
+            return {"positive": [], "negative": []}

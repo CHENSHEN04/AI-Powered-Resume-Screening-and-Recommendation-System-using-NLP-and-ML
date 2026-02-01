@@ -307,7 +307,46 @@ Skill-Gap Pipeline:
     - Show matched keywords/skills highlighted in resume
     - Display skill-gap analysis: "You have 7/10 required skills for Data Scientist"
     - Provide actionable feedback: "Consider adding experience with TensorFlow"
-    ```
+    
+> [!FriendlyUserInterface]
+process of login 
+guest login 
+- change interface to guest mode that does not support save data or analysis
+after analysis show the option to login or signup to save the data or analysis
+signup 
+- new user
+- if the new user just signup when proceed to login menu immediately help them to insert their information in the login menu, allow them to press login button to login
+login 
+- existing user just login, refresh their profile and prompt welcome back [name]
+
+analyze now 
+- when user click this button it will analyze the resume and show the results
+- during the time waiting for the analysis to complete, show a loading bar and a message that says "Analyzing your resume..."
+- after the analysis is complete, show the results
+
+[!afteranalysis]
+guest login 
+- after showing the result, prompt user to login or signup to save the data or analysis
+existing user 
+- after showing the result, save it immediately into history (show the uploaded resume and the result as well as the date and time of the analysis) and show the option to download the result
+- can check the history of the analysis in the history page
+
+[!Skillstab]
+- show user the skills that are extracted from the resume
+- show user the skills that are matched with the job requirements
+- show user the skills that are not matched with the job requirements
+- show user the skills that are recommended to improve
+
+[!Gapstab]
+- show user the gap between the user's skills and the job requirements
+- show user the recommended skills to improve
+- provide the reason for the gap and recommendations
+
+[!Plantab]
+- show user the plan for the user to improve their skills
+- show user the recommended resources for the user to improve their skills
+- provide the reason for the plan and recommendations
+
 > [!evaluation]
 1. classification performance
 2. ranking quality
