@@ -178,3 +178,40 @@ class SemanticMatcher:
         
         # Sort by score
         return dict(sorted(combined.items(), key=lambda x: x[1], reverse=True))
+
+    def find_best_match(self, query: str, candidates: Dict[str, str]) -> Tuple[str, float]:
+        """
+        Find the best matching category from a dictionary of candidates.
+        
+        Args:
+            query: User input string (e.g. "React Developer")
+            candidates: Dict mapping {slug: description_or_title}
+            
+        Returns:
+            Tuple of (best_slug, similarity_score). Returns (None, 0.0) if no match.
+        """
+        if self.model is None or not candidates:
+            return None, 0.0
+            
+        try:
+            query_embedding = self.model.encode(query, convert_to_numpy=True)
+            
+            best_slug = None
+            best_score = -1.0
+            
+            # Identify keys and values to batch encode if efficiency is needed, 
+            # but for now simple loop is fine for <100 categories
+            for slug, text in candidates.items():
+                candidate_embedding = self.model.encode(text, convert_to_numpy=True)
+                score = self._cosine_similarity(query_embedding, candidate_embedding)
+                
+                if score > best_score:
+                    best_score = score
+                    best_slug = slug
+            
+            return best_slug, float(best_score)
+            
+        except Exception as e:
+            log_error(get_error(ErrorCode.SVM_MODEL_ERROR),
+                     {"context": "Finding best match", "error": str(e)})
+            return None, 0.0

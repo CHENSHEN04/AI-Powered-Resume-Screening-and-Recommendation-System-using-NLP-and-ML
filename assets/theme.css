@@ -1,0 +1,236 @@
+/* =========================================================================
+   Deep Career Coach – Global Theme
+   ========================================================================= */
+
+/* --- Root Variables (Dark-aware) --- */
+:root {
+    --brand-primary: #6C63FF;
+    --brand-secondary: #FF6584;
+    --brand-accent: #43E97B;
+    --surface-dark: #0E1117;
+    --surface-card: rgba(255, 255, 255, 0.04);
+    --text-primary: #FAFAFA;
+    --text-muted: #8899A6;
+    --radius-sm: 8px;
+    --radius-md: 14px;
+    --radius-lg: 20px;
+    --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.25);
+    --gradient-brand: linear-gradient(135deg, #6C63FF 0%, #FF6584 100%);
+    --gradient-success: linear-gradient(135deg, #43E97B 0%, #38F9D7 100%);
+}
+
+/* --- Global Overrides --- */
+.main .block-container {
+    padding-top: 1.5rem;
+    padding-bottom: 2rem;
+    max-width: 1200px;
+}
+
+h1, h2, h3 {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+h1 {
+    background: var(--gradient-brand);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 800;
+}
+
+/* --- Hero Section --- */
+.hero-container {
+    text-align: center;
+    padding: 4rem 2rem;
+    border-radius: var(--radius-lg);
+    background: radial-gradient(circle at 30% 40%, rgba(108, 99, 255, 0.15), transparent 60%),
+                radial-gradient(circle at 70% 60%, rgba(255, 101, 132, 0.10), transparent 50%);
+    margin-bottom: 2rem;
+}
+
+.hero-container h1 {
+    font-size: 2.8rem;
+    margin-bottom: 0.5rem;
+}
+
+.hero-subtitle {
+    color: var(--text-muted);
+    font-size: 1.15rem;
+    max-width: 600px;
+    margin: 0 auto 2rem;
+    line-height: 1.6;
+}
+
+/* --- Metric Cards --- */
+.metric-card {
+    background: var(--surface-card);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius-md);
+    padding: 1.2rem 1.5rem;
+    text-align: center;
+    backdrop-filter: blur(12px);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-card);
+}
+.metric-card .metric-value {
+    font-size: 2rem;
+    font-weight: 800;
+    background: var(--gradient-brand);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.metric-card .metric-label {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 0.3rem;
+}
+
+/* --- Teaser Score Card --- */
+.teaser-score {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 3rem;
+    border-radius: var(--radius-lg);
+    background: var(--surface-card);
+    border: 1px solid rgba(108, 99, 255, 0.2);
+    box-shadow: 0 0 40px rgba(108, 99, 255, 0.08);
+    margin: 2rem auto;
+    max-width: 480px;
+}
+.teaser-score .score-number {
+    font-size: 4.5rem;
+    font-weight: 900;
+    background: var(--gradient-brand);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    line-height: 1;
+}
+.teaser-score .score-label {
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+    font-size: 1rem;
+}
+
+/* --- Action Cards (Recommendations) --- */
+.action-card {
+    background: var(--surface-card);
+    border-left: 4px solid var(--brand-primary);
+    border-radius: var(--radius-sm);
+    padding: 1rem 1.2rem;
+    margin-bottom: 0.8rem;
+    transition: border-color 0.2s;
+}
+.action-card:hover {
+    border-left-color: var(--brand-secondary);
+}
+.action-card .action-title {
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+}
+.action-card .action-impact {
+    color: var(--brand-accent);
+    font-size: 0.85rem;
+}
+
+/* --- Skill Pills --- */
+.skill-pill {
+    display: inline-block;
+    padding: 0.35rem 0.9rem;
+    margin: 0.25rem;
+    border-radius: 50px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    background: rgba(108, 99, 255, 0.12);
+    color: #B8B3FF;
+    border: 1px solid rgba(108, 99, 255, 0.2);
+    transition: all 0.2s;
+}
+.skill-pill:hover {
+    background: rgba(108, 99, 255, 0.25);
+    transform: scale(1.03);
+}
+.skill-pill.missing {
+    background: rgba(255, 101, 132, 0.12);
+    color: #FFB3C4;
+    border-color: rgba(255, 101, 132, 0.2);
+}
+.skill-pill.present {
+    background: rgba(67, 233, 123, 0.12);
+    color: #8FFFB3;
+    border-color: rgba(67, 233, 123, 0.2);
+}
+
+/* --- Progress Ring (CSS) --- */
+.progress-ring-container {
+    position: relative;
+    width: 160px;
+    height: 160px;
+    margin: 0 auto;
+}
+
+/* --- Glassmorphism Panels --- */
+.glass-panel {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-md);
+    padding: 1.5rem;
+}
+
+/* --- Fade-in Animation --- */
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.animate-in {
+    animation: fadeInUp 0.6s ease-out both;
+}
+.animate-in-delay-1 { animation-delay: 0.1s; }
+.animate-in-delay-2 { animation-delay: 0.2s; }
+.animate-in-delay-3 { animation-delay: 0.3s; }
+
+/* --- CTA Button Override --- */
+.stButton > button[kind="primary"] {
+    background: var(--gradient-brand) !important;
+    border: none !important;
+    border-radius: 50px !important;
+    padding: 0.6rem 2.5rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.02em;
+    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+}
+.stButton > button[kind="primary"]:hover {
+    transform: scale(1.03) !important;
+    box-shadow: 0 6px 20px rgba(108, 99, 255, 0.35) !important;
+}
+
+/* --- Sidebar Polish --- */
+section[data-testid="stSidebar"] {
+    background: rgba(14, 17, 23, 0.95) !important;
+    backdrop-filter: blur(20px);
+}
+section[data-testid="stSidebar"] .stMarkdown h1 {
+    font-size: 1.4rem;
+}
+
+/* --- Tab Styling --- */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 0.5rem;
+}
+.stTabs [data-baseweb="tab"] {
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    padding: 0.5rem 1.2rem;
+}
+
+/* --- Mobile Responsive --- */
+@media (max-width: 768px) {
+    .hero-container { padding: 2rem 1rem; }
+    .hero-container h1 { font-size: 1.8rem; }
+    .teaser-score .score-number { font-size: 3rem; }
+    .metric-card { padding: 0.8rem; }
+}

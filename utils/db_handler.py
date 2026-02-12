@@ -275,3 +275,28 @@ class DatabaseManager:
             # st.error(f"DB Error fetching resources: {e}")
             return {}
 
+    def log_system_event(self, level: str, message: str, details: Dict[str, Any] = None):
+        """
+        Log a system event to the database.
+        
+        Args:
+            level: 'INFO', 'WARNING', 'ERROR'
+            message: Description of the event
+            details: Optional JSON serializable dictionary
+        """
+        if not self.supabase: return
+        
+        try:
+            entry = {
+                "level": level,
+                "message": message,
+                "details": details or {},
+                # "created_at": "now()" -- defaults in DB
+            }
+            # Fire and forget - don't block main thread if possible, 
+            # though supabase-py is sync by default unless using async client.
+            self.supabase.table("system_logs").insert(entry).execute()
+        except Exception as e:
+            # Fallback to console if DB logging fails
+            print(f"FAILED TO LOG TO DB: {e}")
+

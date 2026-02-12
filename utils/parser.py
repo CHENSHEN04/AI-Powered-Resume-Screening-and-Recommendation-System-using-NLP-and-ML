@@ -63,13 +63,25 @@ class ResumeParser:
         Returns:
             ParseResult with extracted text and metadata
         """
+        # 1. Validate File
+        is_valid, error = self._validate_file(file_bytes, filename)
+        if not is_valid:
+            return ParseResult(
+                success=False,
+                text="",
+                error_code=error.code.value,
+                error=error
+            )
+
         ext = Path(filename).suffix.lower()
         
+        result = None
         if ext == ".pdf":
-            return self.parse_pdf(file_bytes)
+            result = self.parse_pdf(file_bytes)
         elif ext == ".docx":
-            return self.parse_docx(file_bytes)
+            result = self.parse_docx(file_bytes)
         else:
+            # Should be caught by validate_file, but safety net
             error = get_error(ErrorCode.INVALID_FILE_TYPE)
             return ParseResult(
                 success=False,
@@ -77,6 +89,49 @@ class ResumeParser:
                 error_code=error.code.value,
                 error=error
             )
+            
+        # 2. Check Page Limit (Warning)
+        if result.success and result.page_count > 3:
+            result.metadata["warning"] = "Page count exceeds recommended limit (3 pages)."
+            
+        return result
+
+    def _validate_file(self, file_bytes: bytes, filename: str) -> tuple[bool, Optional[AppError]]:
+        """
+        Validate file size, type (MIME), and content.
+        """
+        # Check Empty
+        if len(file_bytes) == 0:
+            return False, get_error(ErrorCode.EMPTY_FILE)
+            
+        # Check Size (10MB limit)
+        if len(file_bytes) > 10 * 1024 * 1024:
+            return False, get_error(ErrorCode.FILE_TOO_LARGE)
+
+        # Check MIME Type
+        try:
+            import magic
+            mime = magic.Magic(mime=True)
+            file_type = mime.from_buffer(file_bytes)
+            
+            allowed_mimes = [
+                "application/pdf",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document", # .docx
+                "application/msword" # .doc (legacy, maybe treat as invalid or try docx parser)
+            ]
+            
+            # Relaxed check for docx which can sometimes appear as zip
+            if file_type not in allowed_mimes and file_type != "application/zip":
+                return False, get_error(ErrorCode.INVALID_FILE_TYPE)
+                
+        except ImportError:
+            # Fallback if python-magic not installed
+            pass
+        except Exception as e:
+            # Log but don't block if magic fails
+            pass
+
+        return True, None
     
     def parse_pdf(self, file_bytes: bytes) -> ParseResult:
         """

@@ -11,7 +11,7 @@ import spacy
 import json
 import re
 from pathlib import Path
-from typing import List, Dict, Set, Tuple
+from typing import List, Dict, Set, Tuple, Any
 from functools import lru_cache
 import streamlit as st
 
@@ -106,51 +106,160 @@ class SkillExtractor:
         if not text:
              return {"all_skills": [], "count": 0}
 
-        doc = self.nlp(text[:100000]) # Limit text length for performance
+        return self._weighted_extraction(text)
+
+    def _segment_text(self, text: str) -> Dict[str, str]:
+        """
+        Segment text into logical sections (Education, Work, Projects, Skills).
+        """
+        sections = {
+            "education": "", 
+            "work": "", 
+            "projects": "", 
+            "skills": "", 
+            "certifications": "",
+            "other": ""
+        }
         
-        found_skills = set()
+        # Simple heuristic regex for headers
+        # Note: This is fragile and works best on structured text. 
+        # For production, use ML-based segmentation or LayoutLM.
+        headers = {
+            "education": r"(?i)\b(education|academic background|university|college)\b",
+            "work": r"(?i)\b(experience|employment|work history|professional experience)\b",
+            "projects": r"(?i)\b(projects|personal projects|hackathons)\b",
+            "skills": r"(?i)\b(skills|technical skills|technologies|competencies)\b",
+            "certifications": r"(?i)\b(certifications|courses|licenses)\b"
+        }
         
-        # 1. NER-based extraction (if custom labels existed, but standard model relies on ORG/PRODUCT)
-        # We use NER primarily to identify candidates, then validate against DB
-        for ent in doc.ents:
-            if ent.label_ in ["ORG", "PRODUCT", "WORK_OF_ART", "LANGUAGE"]:
-                candidate = ent.text.lower()
-                if candidate in self.skill_db:
-                    found_skills.add(self.normalize_skill(ent.text))
+        lines = text.split('\n')
+        current_section = "other"
+        buffer = []
         
-        # 2. Phrase matching / Keyword scanning (more reliable for specific tech stack)
-        # Scan for every known skill in the text
-        # This is simple O(N*M) but robust for the limited skill set size (~100-200 skills)
-        text_lower = text.lower()
+        for line in lines:
+            line_clean = line.strip()
+            if not line_clean: 
+                continue
+                
+            # Check if line is a header (short, matches keywords)
+            is_header = False
+            if len(line_clean) < 40: # Headers are usually short
+                for section, pattern in headers.items():
+                    if re.search(pattern, line_clean):
+                        # Save buffer to previous section
+                        if buffer:
+                            sections[current_section] += "\n".join(buffer) + "\n"
+                        # Start new section
+                        current_section = section
+                        buffer = []
+                        is_header = True
+                        break
+            
+            if not is_header:
+                buffer.append(line)
         
-        # Create a mapping of lower->original for the skill DB to restore casing
+        # Flush last buffer
+        if buffer:
+            sections[current_section] += "\n".join(buffer)
+            
+        return sections
+
+    def _weighted_extraction(self, text: str) -> Dict[str, Any]:
+        """
+        Extract skills with section-based weighting.
+        """
+        sections = self._segment_text(text)
+        found_skills = {} # {name: {count, sources: [], max_weight}}
+        
+        # Define Section Weights (Education > Skills > Projects > Work for Students)
+        section_weights = {
+            "education": 1.2,
+            "skills": 1.0,
+            "projects": 0.9,
+            "work": 0.8, # Lower for students as it might be irrelevant internship
+            "certifications": 0.8,
+            "other": 0.5
+        }
+        
         db_casing_map = {}
         for cat in self.standards.get("job_categories", {}).values():
              for group in ["required_skills", "recommended_skills", "nice_to_have"]:
                  for s in cat.get(group, []):
                      db_casing_map[s.lower()] = s
 
-        for skill_lower in self.skill_db:
-            # Use regex to find whole words only to avoid partial usage (e.g. "java" in "javascript")
-            # Escape regex special chars in skill name
-            escaped_skill = re.escape(skill_lower)
-            pattern = r'\b' + escaped_skill + r'\b'
+        for section_name, section_text in sections.items():
+            if not section_text: continue
             
-            if re.search(pattern, text_lower):
-                # Retrieve original casing if available, else usage
-                original_case = db_casing_map.get(skill_lower, skill_lower.title())
-                found_skills.add(original_case)
+            # Extract from this section
+            # (Reuse the scanning logic - simplified for brevity here)
+            text_lower = section_text.lower()
+            
+            # Combine skill_db scanning + Alias scanning
+            matches = set()
+            
+            # 1. DB Scan
+            for skill_lower in self.skill_db:
+                escaped_skill = re.escape(skill_lower)
+                # Word boundary check
+                if re.search(r'\b' + escaped_skill + r'\b', text_lower):
+                    matches.add(skill_lower)
+            
+            # 2. Alias Scan
+            for alias, real_name in self.aliases.items():
+                 if re.search(r'\b' + re.escape(alias) + r'\b', text_lower):
+                     matches.add(real_name.lower())
+
+            # Register matches
+            weight = section_weights.get(section_name, 0.5)
+            for m in matches:
+                # Restore case
+                original_name = db_casing_map.get(m, self.normalize_skill(m.title()))
                 
-        # 3. Check for specific aliases in text (e.g. "js" for "JavaScript")
-        for alias, real_name in self.aliases.items():
-             pattern = r'\b' + re.escape(alias) + r'\b'
-             if re.search(pattern, text_lower):
-                 found_skills.add(real_name)
+                if original_name not in found_skills:
+                    found_skills[original_name] = {"count": 0, "sources": set(), "max_weight": 0}
+                
+                found_skills[original_name]["count"] += 1
+                found_skills[original_name]["sources"].add(section_name)
+                found_skills[original_name]["max_weight"] = max(found_skills[original_name]["max_weight"], weight)
+
+        # Format output
+        formatted_skills = []
+        for name, data in found_skills.items():
+            formatted_skills.append({
+                "name": name,
+                "sources": list(data["sources"]),
+                "weight_score": data["max_weight"]
+            })
 
         return {
-            "all_skills": sorted(list(found_skills)),
-            "count": len(found_skills)
+            "all_skills": sorted([s["name"] for s in formatted_skills]),
+            "detailed_skills": formatted_skills,
+            "count": len(formatted_skills)
         }
+
+    def apply_student_dampening(self, self_rating: int, years_experience: float) -> int:
+        """
+        Apply 'Student Dampening Factor' to self-reported ratings.
+        
+        Logic:
+        - Students often overrate (Dunning-Kruger).
+        - If Exp < 1 year: Max rating is 3 (Intermediate).
+        - If Exp < 3 years: Max rating is 4 (Advanced).
+        - To get 5 (Expert), need 3+ years or verified output.
+        
+        Args:
+            self_rating: 1-5 scale
+            years_experience: Years of experience
+            
+        Returns:
+            Adjusted rating (1-5)
+        """
+        if years_experience < 1.0:
+            return min(self_rating, 3)
+        if years_experience < 3.0:
+            return min(self_rating, 4)
+            
+        return self_rating
 
     def map_to_category(self, extracted_skills: List[str]) -> Dict[str, float]:
         """
