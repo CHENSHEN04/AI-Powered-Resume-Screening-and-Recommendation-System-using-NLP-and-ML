@@ -22,6 +22,11 @@ from utils.validators import validate_file
 from utils.ui_components import show_error, show_warning
 from utils.db_handler import DatabaseManager
 from utils.rate_limiter import RateLimiter, show_rate_limit_info
+try:
+    from utils.ai_assistant import AIAssistant
+except ImportError:
+    AIAssistant = None
+
 
 # ==============================================================================
 # Page Configuration
@@ -55,6 +60,7 @@ DEFAULTS = {
     "gap_analysis": None,
     "growth_data": None,
     "explanation": None,
+    "chat_history": [],
     "target_role": None,
     "reviewed_skills": None,      # User-edited skill list after review
 }
@@ -656,7 +662,7 @@ def render_dashboard_stage():
             type="primary"
         )
     except Exception:
-        pass  # PDF generation is optional
+        pass
 
     st.markdown("---")
 
@@ -667,19 +673,17 @@ def render_dashboard_stage():
         st.markdown("### 🕸️ Skill Radar")
         from utils.visualizer import Visualizer
         radar = Visualizer.plot_radar_chart(skill_data["all_skills"], analysis)
-        st.plotly_chart(radar, use_container_width=True,
-                       config={"displayModeBar": False})
+        st.plotly_chart(radar, use_container_width=True, config={"displayModeBar": False})
 
     with chart_right:
         st.markdown("### 📊 Gap Overview")
         gap_chart = Visualizer.plot_skill_gap_chart(analysis)
-        st.plotly_chart(gap_chart, use_container_width=True,
-                       config={"displayModeBar": False})
+        st.plotly_chart(gap_chart, use_container_width=True, config={"displayModeBar": False})
 
     st.markdown("---")
 
-    # --- Row 3: Tabs (Skills / Gaps / Learning Plan) ---
-    tab_skills, tab_gaps, tab_plan = st.tabs(["✅ Your Skills", "❌ Skill Gaps", "🎓 Learning Plan"])
+    # --- Row 3: Tabs (Skills / Gaps / Learning Plan / AI Coach) ---
+    tab_skills, tab_gaps, tab_plan, tab_ai = st.tabs(["✅ Your Skills", "❌ Skill Gaps", "🎓 Learning Plan", "🤖 AI Coach"])
 
     with tab_skills:
         if skill_data["all_skills"]:
@@ -688,7 +692,7 @@ def render_dashboard_stage():
             )
             st.markdown(pills, unsafe_allow_html=True)
         else:
-            st.info("No skills detected. Try the Builder Mode!")
+            st.info("No skills detected.")
 
     with tab_gaps:
         c1, c2 = st.columns(2)
@@ -722,22 +726,45 @@ def render_dashboard_stage():
                         else:
                             st.markdown(f"- {r}")
         else:
-            st.info("No specific resources found for your gaps yet.")
+            st.info("No specific resources found yet.")
 
-        # Action Cards (Recommendations)
         if analysis.get("recommendations"):
-            st.markdown("---")
             st.markdown("### 💡 Coach Recommendations")
             for rec in analysis["recommendations"]:
-                st.markdown(f"""
-                <div class="action-card animate-in">
-                    <div class="action-title">{rec}</div>
-                </div>
-                """, unsafe_allow_html=True)
+                 st.markdown(f"- {rec}")
+
+    with tab_ai:
+        st.markdown("### 🤖 Neural Career Coach")
+        st.caption("Powered by Stitch Memory & GPT-Neo")
+        
+        if not AIAssistant:
+            st.warning("⚠️ AI Assistant dependencies not found.")
+        else:
+            if "ai_agent" not in st.session_state:
+                st.session_state["ai_agent"] = AIAssistant()
+                
+            for msg in st.session_state["chat_history"]:
+                role = "user" if msg["role"] == "user" else "assistant"
+                with st.chat_message(role):
+                    st.write(msg["content"])
+            
+            if prompt := st.chat_input("Ask about your career path..."):
+                st.session_state["chat_history"].append({"role": "user", "content": prompt})
+                with st.chat_message("user"):
+                    st.write(prompt)
+                
+                with st.chat_message("assistant"):
+                    with st.spinner("Thinking..."):
+                        user = st.session_state.get("user")
+                        user_id = user.id if user else "guest"
+                        response = st.session_state["ai_agent"].generate_response(prompt, user_id)
+                        st.write(response)
+                        
+                st.session_state["chat_history"].append({"role": "assistant", "content": response})
 
     st.markdown("---")
 
-    # --- Row 4: Explainability ---
+    # --- Explainability ---
     if st.session_state.get("explanation"):
         expl = st.session_state["explanation"]
         with st.expander("🔍 Why This Role? (AI Explainability)"):
@@ -752,7 +779,7 @@ def render_dashboard_stage():
                 p_df = p_df.sort_values("Impact", ascending=False)
                 st.bar_chart(p_df.set_index("Keyword"), color="#6C63FF")
 
-    # --- History Tab (for logged-in users) ---
+    # --- History Tab ---
     user = st.session_state.get("user")
     if user and not st.session_state.get("is_anonymous"):
         with st.expander("📜 Your Analysis History"):
@@ -764,6 +791,7 @@ def render_dashboard_stage():
                 st.dataframe(df[display_cols] if display_cols else df, use_container_width=True)
             else:
                 st.caption("No previous analyses found.")
+
 
 
 # ==============================================================================
