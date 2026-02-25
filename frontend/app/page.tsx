@@ -3,14 +3,17 @@
 
 import { useState } from "react"
 import { motion } from "framer-motion"
-import { Upload, FileText, CheckCircle, ArrowRight } from "lucide-react"
+import { Upload, CheckCircle, ArrowRight, LogIn } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/lib/auth-context"
 
 export default function Home() {
+  const { user, session } = useAuth()
   const [isDragging, setIsDragging] = useState(false)
   const [file, setFile] = useState<File | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
@@ -36,8 +39,55 @@ export default function Home() {
     }
   }
 
+  const handleAnalyze = async () => {
+    if (!file) return
+
+    setIsAnalyzing(true)
+    const formData = new FormData()
+    formData.append("file", file)
+
+    // Pass user_id if logged in
+    if (user) {
+      formData.append("user_id", user.id)
+    }
+
+    try {
+      const headers: Record<string, string> = {}
+
+      // Pass auth token so backend can save history
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`
+      }
+
+      const response = await fetch("http://localhost:8000/api/v1/analyze/", {
+        method: "POST",
+        headers,
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || "Analysis failed")
+      }
+
+      const data = await response.json()
+
+      // Store in localStorage for dashboard display
+      localStorage.setItem("analysisResult", JSON.stringify(data))
+
+      // Navigate to Dashboard
+      window.location.href = "/dashboard"
+
+    } catch (error) {
+      console.error(error)
+      alert(error instanceof Error ? error.message : "An error occurred")
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-6 bg-gradient-to-b from-background to-secondary/20">
+    <main className="flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center p-6 bg-gradient-to-b from-background to-secondary/20">
 
       {/* Hero Section */}
       <motion.div
@@ -56,6 +106,19 @@ export default function Home() {
           Get instant feedback, skill gap analysis, and tailored career advice powered by advanced NLP.
         </p>
       </motion.div>
+
+      {/* Auth Prompt */}
+      {!user && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="mb-6 flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg px-4 py-2 border"
+        >
+          <LogIn className="w-4 h-4" />
+          <span><a href="/login" className="text-primary font-medium hover:underline">Log in</a> to save your analysis history</span>
+        </motion.div>
+      )}
 
       {/* Upload Section */}
       <motion.div
@@ -111,15 +174,14 @@ export default function Home() {
                     <Button variant="outline" onClick={(e) => {
                       e.stopPropagation()
                       setFile(null)
-                    }}>
+                    }} disabled={isAnalyzing}>
                       Remove
                     </Button>
                     <Button onClick={(e) => {
-                      // TODO: Implement Upload Logic
                       e.stopPropagation()
-                      alert("Upload logic coming in next step!")
-                    }}>
-                      Analyze Resume <ArrowRight className="w-4 h-4 ml-2" />
+                      handleAnalyze()
+                    }} disabled={isAnalyzing}>
+                      {isAnalyzing ? "Analyzing..." : "Analyze Resume"} <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>
                   </div>
                 </div>

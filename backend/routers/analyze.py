@@ -1,12 +1,14 @@
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Form
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Header
 from backend.schemas import ResumeUploadResponse, AnalysisResult, SkillSchema
+from backend.auth import get_user_from_token
 from utils.parser import ResumeParser
 from utils.skill_extractor import SkillExtractor
 from utils.classifier import JobClassifier
 from utils.gap_analyzer import GapAnalyzer
 from utils.db_handler import DatabaseManager
 from utils.validators import validate_file
+from typing import Optional
 import logging
 
 router = APIRouter(
@@ -20,10 +22,12 @@ logger = logging.getLogger(__name__)
 @router.post("/", response_model=ResumeUploadResponse)
 async def analyze_resume(
     file: UploadFile = File(...),
-    user_id: str = Form("guest") # Can be extracted from auth token later
+    user_id: str = Form("guest"),
+    authorization: Optional[str] = Header(None),
 ):
     """
     Upload and analyze a resume file (PDF/DOCX).
+    If authenticated, auto-saves results to Supabase.
     """
     
     # 1. Read File Content
@@ -64,7 +68,30 @@ async def analyze_resume(
     analyzer = GapAnalyzer(db)
     analysis = analyzer.analyze_gaps(skill_data["all_skills"], target_role)
     
-    # 7. Construct Response
+    # 7. Auto-save to database if user is authenticated
+    auth_user = await get_user_from_token(authorization)
+    if auth_user:
+        try:
+            save_data = {
+                "filename": file.filename,
+                "storage_path": f"uploads/{auth_user['id']}/{file.filename}",
+                "parsed_text": parse_result.text[:5000],  # Truncate for DB
+                "page_count": getattr(parse_result, 'page_count', 1),
+                "confidence_score": parse_result.confidence,
+                "predicted_role": target_role,
+                "match_score": analysis["match_percentage"],
+                "skills": [{"name": s, "category": "extracted"} for s in skill_data["all_skills"]],
+            }
+            resume_id = db.save_resume_analysis(auth_user["id"], save_data)
+            if resume_id:
+                logger.info(f"Saved analysis {resume_id} for user {auth_user['id']}")
+            else:
+                logger.warning(f"Failed to save analysis for user {auth_user['id']}")
+        except Exception as e:
+            logger.error(f"Error saving analysis: {e}")
+            # Don't fail the request if saving fails — still return results
+    
+    # 8. Construct Response
     return ResumeUploadResponse(
         filename=file.filename,
         parsed_text=parse_result.text,

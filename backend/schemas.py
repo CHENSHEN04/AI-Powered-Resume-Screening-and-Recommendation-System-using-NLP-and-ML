@@ -35,3 +35,18 @@ class ResumeUploadResponse(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     context_used: bool = False
+
+# --- History Models ---
+
+class HistoryItem(BaseModel):
+    id: str
+    filename: str
+    predicted_role: str
+    confidence_score: float
+    match_score: float
+    skills: List[str]
+    created_at: str
+
+class HistoryListResponse(BaseModel):
+    items: List[HistoryItem]
+    total: int

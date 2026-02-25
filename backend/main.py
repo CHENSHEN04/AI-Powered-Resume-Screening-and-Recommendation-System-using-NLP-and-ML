@@ -37,10 +37,12 @@ async def health_check():
     return {"status": "ok"}
 
 
-from backend.routers import analyze, chat
+from backend.routers import analyze, chat, history, profile
 
 app.include_router(analyze.router)
 app.include_router(chat.router)
+app.include_router(history.router)
+app.include_router(profile.router)
 
 if __name__ == "__main__":
     uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)
