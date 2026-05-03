@@ -14,7 +14,7 @@ from typing import Dict, List, Tuple, Optional
 import streamlit as st
 
 from utils.errors import ErrorCode, AppError, get_error, log_error
-from utils.jd_matcher import SemanticMatcher
+from utils.jd_matcher import JDMatcher
 
 # ==============================================================================
 # Constants
@@ -36,7 +36,7 @@ class JobClassifier:
     def __init__(self):
         """Initialize classifier by loading models."""
         self.clf, self.tfidf, self.encoder = self._load_models()
-        self.semantic_matcher = SemanticMatcher()
+        self.jd_matcher = JDMatcher()
         
     @staticmethod
     @st.cache_resource
