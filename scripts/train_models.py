@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import category descriptions as training data
-from utils.semantic_matcher import CATEGORY_DESCRIPTIONS
+from utils.jd_matcher import CATEGORY_DESCRIPTIONS
 
 MODELS_DIR = Path("models")
 MODELS_DIR.mkdir(exist_ok=True)

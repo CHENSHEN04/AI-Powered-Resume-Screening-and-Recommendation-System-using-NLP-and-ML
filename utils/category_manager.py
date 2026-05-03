@@ -1,7 +1,7 @@
 from typing import Tuple, Dict, Optional
 import streamlit as st
 from utils.db_handler import DatabaseManager
-from utils.semantic_matcher import SemanticMatcher
+from utils.jd_matcher import SemanticMatcher
 
 class CategoryManager:
     """

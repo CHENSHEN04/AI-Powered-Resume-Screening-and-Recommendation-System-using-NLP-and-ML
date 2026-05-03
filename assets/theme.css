@@ -1,20 +1,27 @@
 /* =========================================================================
-   Deep Career Coach – Global Theme
+   Deep Career Coach – Global Theme (Dark Mode)
+   
+   Color Palette:
+     Brand:    #6C63FF (purple)   #FF6584 (coral)   #43E97B (green)
+     Surface:  #0E1117 (bg)       #1A1D27 (cards)   #252830 (hover)
+     Text:     #FAFAFA (primary)  #C0C6D0 (body)    #8899A6 (muted)
    ========================================================================= */
 
-/* --- Root Variables (Dark-aware) --- */
+/* --- Root Variables --- */
 :root {
     --brand-primary: #6C63FF;
     --brand-secondary: #FF6584;
     --brand-accent: #43E97B;
     --surface-dark: #0E1117;
-    --surface-card: rgba(255, 255, 255, 0.04);
+    --surface-card: #1A1D27;
+    --surface-hover: #252830;
     --text-primary: #FAFAFA;
+    --text-body: #C0C6D0;
     --text-muted: #8899A6;
     --radius-sm: 8px;
     --radius-md: 14px;
     --radius-lg: 20px;
-    --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.25);
+    --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.35);
     --gradient-brand: linear-gradient(135deg, #6C63FF 0%, #FF6584 100%);
     --gradient-success: linear-gradient(135deg, #43E97B 0%, #38F9D7 100%);
 }
@@ -26,10 +33,21 @@
     max-width: 1200px;
 }
 
+/* ---- Fix all body text for readability ---- */
+.main .block-container p,
+.main .block-container li,
+.main .block-container span,
+.main .block-container div {
+    color: var(--text-body);
+    font-size: 1rem;
+    line-height: 1.7;
+}
+
 h1,
 h2,
 h3 {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--text-primary) !important;
 }
 
 h1 {
@@ -38,6 +56,18 @@ h1 {
     background-clip: text;
     -webkit-text-fill-color: transparent;
     font-weight: 800;
+    font-size: 2.8rem !important;
+}
+
+h2 {
+    font-size: 1.6rem !important;
+    font-weight: 700;
+    margin-top: 1.5rem;
+}
+
+h3 {
+    font-size: 1.25rem !important;
+    font-weight: 600;
 }
 
 /* --- Hero Section --- */
@@ -45,42 +75,45 @@ h1 {
     text-align: center;
     padding: 4rem 2rem;
     border-radius: var(--radius-lg);
-    background: radial-gradient(circle at 30% 40%, rgba(108, 99, 255, 0.15), transparent 60%),
-        radial-gradient(circle at 70% 60%, rgba(255, 101, 132, 0.10), transparent 50%);
+    background: radial-gradient(circle at 30% 40%, rgba(108, 99, 255, 0.20), transparent 60%),
+        radial-gradient(circle at 70% 60%, rgba(255, 101, 132, 0.12), transparent 50%),
+        var(--surface-card);
+    border: 1px solid rgba(108, 99, 255, 0.15);
     margin-bottom: 2rem;
 }
 
 .hero-container h1 {
-    font-size: 2.8rem;
+    font-size: 3rem !important;
     margin-bottom: 0.5rem;
 }
 
 .hero-subtitle {
-    color: var(--text-muted);
-    font-size: 1.15rem;
+    color: var(--text-body) !important;
+    font-size: 1.15rem !important;
     max-width: 600px;
     margin: 0 auto 2rem;
-    line-height: 1.6;
+    line-height: 1.7;
 }
 
-/* --- Metric Cards --- */
+/* --- Metric / Feature Cards --- */
 .metric-card {
     background: var(--surface-card);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(108, 99, 255, 0.12);
     border-radius: var(--radius-md);
-    padding: 1.2rem 1.5rem;
+    padding: 1.5rem;
     text-align: center;
-    backdrop-filter: blur(12px);
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+    cursor: default;
 }
 
 .metric-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-card);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 30px rgba(108, 99, 255, 0.2);
+    border-color: rgba(108, 99, 255, 0.35);
 }
 
 .metric-card .metric-value {
-    font-size: 2rem;
+    font-size: 2.2rem;
     font-weight: 800;
     background: var(--gradient-brand);
     -webkit-background-clip: text;
@@ -89,11 +122,12 @@ h1 {
 }
 
 .metric-card .metric-label {
-    color: var(--text-muted);
-    font-size: 0.85rem;
+    color: var(--text-body) !important;
+    font-size: 0.95rem !important;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-top: 0.3rem;
+    letter-spacing: 0.06em;
+    margin-top: 0.4rem;
+    font-weight: 500;
 }
 
 /* --- Teaser Score Card --- */
@@ -104,14 +138,14 @@ h1 {
     padding: 3rem;
     border-radius: var(--radius-lg);
     background: var(--surface-card);
-    border: 1px solid rgba(108, 99, 255, 0.2);
-    box-shadow: 0 0 40px rgba(108, 99, 255, 0.08);
+    border: 1px solid rgba(108, 99, 255, 0.25);
+    box-shadow: 0 0 50px rgba(108, 99, 255, 0.1);
     margin: 2rem auto;
     max-width: 480px;
 }
 
 .teaser-score .score-number {
-    font-size: 4.5rem;
+    font-size: 5rem;
     font-weight: 900;
     background: var(--gradient-brand);
     -webkit-background-clip: text;
@@ -121,9 +155,10 @@ h1 {
 }
 
 .teaser-score .score-label {
-    color: var(--text-muted);
+    color: var(--text-body) !important;
     margin-top: 0.5rem;
-    font-size: 1rem;
+    font-size: 1.1rem !important;
+    font-weight: 500;
 }
 
 /* --- Action Cards (Recommendations) --- */
@@ -131,54 +166,69 @@ h1 {
     background: var(--surface-card);
     border-left: 4px solid var(--brand-primary);
     border-radius: var(--radius-sm);
-    padding: 1rem 1.2rem;
+    padding: 1.2rem 1.4rem;
     margin-bottom: 0.8rem;
-    transition: border-color 0.2s;
+    transition: border-color 0.25s, background 0.25s, transform 0.15s;
 }
 
 .action-card:hover {
     border-left-color: var(--brand-secondary);
+    background: var(--surface-hover);
+    transform: translateX(4px);
 }
 
 .action-card .action-title {
     font-weight: 600;
     margin-bottom: 0.3rem;
+    color: var(--text-primary) !important;
+    font-size: 1rem !important;
 }
 
 .action-card .action-impact {
-    color: var(--brand-accent);
-    font-size: 0.85rem;
+    color: var(--brand-accent) !important;
+    font-size: 0.9rem !important;
+    font-weight: 500;
 }
 
 /* --- Skill Pills --- */
 .skill-pill {
     display: inline-block;
-    padding: 0.35rem 0.9rem;
-    margin: 0.25rem;
+    padding: 0.4rem 1rem;
+    margin: 0.3rem;
     border-radius: 50px;
-    font-size: 0.85rem;
+    font-size: 0.9rem;
     font-weight: 500;
-    background: rgba(108, 99, 255, 0.12);
-    color: #B8B3FF;
-    border: 1px solid rgba(108, 99, 255, 0.2);
-    transition: all 0.2s;
+    background: rgba(108, 99, 255, 0.15);
+    color: #C4BFFF !important;
+    border: 1px solid rgba(108, 99, 255, 0.25);
+    transition: all 0.25s ease;
+    cursor: default;
 }
 
 .skill-pill:hover {
-    background: rgba(108, 99, 255, 0.25);
-    transform: scale(1.03);
+    background: rgba(108, 99, 255, 0.3);
+    transform: scale(1.05);
+    box-shadow: 0 2px 12px rgba(108, 99, 255, 0.2);
 }
 
 .skill-pill.missing {
-    background: rgba(255, 101, 132, 0.12);
-    color: #FFB3C4;
-    border-color: rgba(255, 101, 132, 0.2);
+    background: rgba(255, 101, 132, 0.15);
+    color: #FFBDCD !important;
+    border-color: rgba(255, 101, 132, 0.25);
+}
+
+.skill-pill.missing:hover {
+    background: rgba(255, 101, 132, 0.3);
 }
 
 .skill-pill.present {
-    background: rgba(67, 233, 123, 0.12);
-    color: #8FFFB3;
-    border-color: rgba(67, 233, 123, 0.2);
+    background: rgba(67, 233, 123, 0.15);
+    color: #9AFFC0 !important;
+    border-color: rgba(67, 233, 123, 0.25);
+}
+
+.skill-pill.present:hover {
+    background: rgba(67, 233, 123, 0.3);
 }
 
 /* --- Progress Ring (CSS) --- */
@@ -191,11 +241,12 @@ h1 {
 
 /* --- Glassmorphism Panels --- */
 .glass-panel {
-    background: rgba(255, 255, 255, 0.03);
+    background: rgba(26, 29, 39, 0.8);
     backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(108, 99, 255, 0.12);
     border-radius: var(--radius-md);
     padding: 1.5rem;
+    color: var(--text-body);
 }
 
 /* --- Fade-in Animation --- */
@@ -230,37 +281,138 @@ h1 {
 /* --- CTA Button Override --- */
 .stButton>button[kind="primary"] {
     background: var(--gradient-brand) !important;
+    color: #FFFFFF !important;
     border: none !important;
     border-radius: 50px !important;
-    padding: 0.6rem 2.5rem !important;
+    padding: 0.7rem 2.5rem !important;
     font-weight: 600 !important;
+    font-size: 1rem !important;
     letter-spacing: 0.02em;
-    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+    transition: transform 0.2s ease, box-shadow 0.2s ease !important;
 }
 
 .stButton>button[kind="primary"]:hover {
-    transform: scale(1.03) !important;
-    box-shadow: 0 6px 20px rgba(108, 99, 255, 0.35) !important;
+    transform: scale(1.04) !important;
+    box-shadow: 0 8px 25px rgba(108, 99, 255, 0.4) !important;
+}
+
+/* Make all buttons more visible */
+.stButton>button {
+    font-size: 0.95rem !important;
+    font-weight: 500 !important;
+    border-radius: var(--radius-sm) !important;
+    padding: 0.5rem 1.5rem !important;
+    transition: all 0.2s ease !important;
 }
 
 /* --- Sidebar Polish --- */
 section[data-testid="stSidebar"] {
-    background: rgba(14, 17, 23, 0.95) !important;
-    backdrop-filter: blur(20px);
+    background: #0D0F14 !important;
+    border-right: 1px solid rgba(108, 99, 255, 0.1);
+}
+
+section[data-testid="stSidebar"] * {
+    color: var(--text-body) !important;
 }
 
 section[data-testid="stSidebar"] .stMarkdown h1 {
-    font-size: 1.4rem;
+    font-size: 1.5rem !important;
+    background: var(--gradient-brand);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+section[data-testid="stSidebar"] .stMarkdown p,
+section[data-testid="stSidebar"] .stCaption,
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] span {
+    color: var(--text-body) !important;
+    font-size: 0.95rem !important;
+}
+
+section[data-testid="stSidebar"] input {
+    background: var(--surface-card) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid rgba(108, 99, 255, 0.2) !important;
+    border-radius: var(--radius-sm) !important;
+}
+
+section[data-testid="stSidebar"] .stRadio label {
+    color: var(--text-primary) !important;
+    font-size: 1rem !important;
+    font-weight: 500;
 }
 
 /* --- Tab Styling --- */
 .stTabs [data-baseweb="tab-list"] {
     gap: 0.5rem;
+    border-bottom: 1px solid rgba(108, 99, 255, 0.15);
 }
 
 .stTabs [data-baseweb="tab"] {
     border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-    padding: 0.5rem 1.2rem;
+    padding: 0.6rem 1.4rem;
+    font-size: 0.95rem !important;
+    font-weight: 500;
+    color: var(--text-muted) !important;
+    transition: color 0.2s, background 0.2s;
+}
+
+.stTabs [data-baseweb="tab"]:hover {
+    color: var(--text-primary) !important;
+    background: rgba(108, 99, 255, 0.05);
+}
+
+.stTabs [aria-selected="true"] {
+    color: var(--text-primary) !important;
+    border-bottom: 2px solid var(--brand-primary) !important;
+}
+
+/* --- File Uploader --- */
+[data-testid="stFileUploader"] {
+    border: 2px dashed rgba(108, 99, 255, 0.3) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 1rem !important;
+    transition: border-color 0.3s ease;
+}
+
+[data-testid="stFileUploader"]:hover {
+    border-color: rgba(108, 99, 255, 0.5) !important;
+}
+
+/* --- Data Tables --- */
+.stDataFrame {
+    border-radius: var(--radius-sm) !important;
+    overflow: hidden;
+}
+
+/* --- Tooltips and Expanders --- */
+.stExpander {
+    border: 1px solid rgba(108, 99, 255, 0.12) !important;
+    border-radius: var(--radius-sm) !important;
+}
+
+details summary {
+    color: var(--text-primary) !important;
+    font-weight: 500;
+    font-size: 1rem !important;
+}
+
+/* --- Success / Error Messages --- */
+.stAlert {
+    border-radius: var(--radius-sm) !important;
+    font-size: 0.95rem !important;
+}
+
+/* --- Selectbox and Inputs --- */
+.stSelectbox label,
+.stTextInput label,
+.stTextArea label,
+.stNumberInput label {
+    color: var(--text-primary) !important;
+    font-weight: 500 !important;
+    font-size: 0.95rem !important;
 }
 
 /* --- Mobile Responsive --- */
@@ -270,14 +422,18 @@ section[data-testid="stSidebar"] .stMarkdown h1 {
     }
 
     .hero-container h1 {
-        font-size: 1.8rem;
+        font-size: 2rem !important;
+    }
+
+    .hero-subtitle {
+        font-size: 1rem !important;
     }
 
     .teaser-score .score-number {
-        font-size: 3rem;
+        font-size: 3.5rem;
     }
 
     .metric-card {
-        padding: 0.8rem;
+        padding: 1rem;
     }
 }

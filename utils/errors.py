@@ -40,6 +40,7 @@ class ErrorCode(Enum):
     SKILL_MATCHING_ERROR = "E3003"
     TIMEOUT_ERROR = "E3004"
     INSUFFICIENT_DATA = "E3005"
+    PROCESSING_ERROR = "E3006"
     
     # Database Errors (E4xxx)
     DB_CONNECTION_FAILED = "E4001"

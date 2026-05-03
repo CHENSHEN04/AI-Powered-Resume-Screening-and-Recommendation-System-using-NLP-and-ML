@@ -12,14 +12,14 @@ import streamlit as st
 # Rate limit configuration
 RATE_LIMITS = {
     "anonymous": {
-        "uploads_per_hour": 3,
-        "uploads_per_day": 5,
-        "max_file_size_mb": 5,
+        "uploads_per_hour": 10,
+        "uploads_per_day": 30,
+        "max_file_size_mb": 10,
     },
     "authenticated": {
-        "uploads_per_hour": 10,
-        "uploads_per_day": 50,
-        "max_file_size_mb": 10,
+        "uploads_per_hour": 30,
+        "uploads_per_day": 200,
+        "max_file_size_mb": 15,
     }
 }
 

@@ -15,11 +15,18 @@ def check_password():
     
     def password_entered():
         """Checks whether a password entered by the user is correct."""
-        if st.session_state["password"] == st.secrets["admin_password"]:
+        try:
+            correct_password = st.secrets["admin_password"]
+        except KeyError:
+            st.error("Admin password not configured in `.streamlit/secrets.toml`. Add `admin_password = \"your_password\"` to the file.")
+            return
+        
+        if st.session_state["password"] == correct_password:
             st.session_state.admin_authenticated = True
             del st.session_state["password"]  # don't store password
         else:
             st.session_state.admin_authenticated = False
+            st.error("❌ Incorrect password. Please try again.")
 
     if st.session_state.admin_authenticated:
         return True
@@ -27,6 +34,8 @@ def check_password():
     st.text_input(
         "Enter Admin Password", type="password", on_change=password_entered, key="password"
     )
+    if not st.session_state.admin_authenticated and "password" not in st.session_state:
+        pass  # Waiting for input
     return False
 
 if not check_password():

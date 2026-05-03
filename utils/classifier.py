@@ -14,7 +14,7 @@ from typing import Dict, List, Tuple, Optional
 import streamlit as st
 
 from utils.errors import ErrorCode, AppError, get_error, log_error
-from utils.semantic_matcher import SemanticMatcher
+from utils.jd_matcher import SemanticMatcher
 
 # ==============================================================================
 # Constants
