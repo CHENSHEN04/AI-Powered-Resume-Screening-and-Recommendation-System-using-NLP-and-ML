@@ -344,7 +344,7 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = ""):
     if jd_text and jd_match_result:
         progress.progress(75, text="⚖️ Computing weighted score...")
         try:
-            from utils.weighted_scorer import compute_final_score
+            from utils.weighted_scorer import compute_final_score  # type: ignore[import-not-found]
             score_result = compute_final_score(
                 bert_score=jd_match_result["overall_score"],
                 matched_skills=matched_skills,
