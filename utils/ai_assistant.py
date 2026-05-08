@@ -6,156 +6,171 @@ Uses distilgpt2 as a lightweight model for career coaching.
 Falls back to rule-based responses if model loading fails.
 """
 
-import streamlit as st
+import json
 import logging
+import os
+import streamlit as st
+from typing import Dict, List
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ── Structured prompt template (spec Section 2, Stage 3) ─────────────────────
+_FEEDBACK_PROMPT = """You are an expert technical recruiter. Given the following job description and candidate resume, provide structured feedback in JSON format with these exact keys:
+- "overall_verdict": one of ["Strong Match", "Moderate Match", "Weak Match"]
+- "match_percentage": integer 0-100
+- "matched_skills": list of skills found in both JD and resume
+- "missing_skills": list of skills required in JD but absent in resume
+- "extra_skills": list of notable skills in resume not mentioned in JD
+- "experience_gap": string describing any experience level mismatch
+- "recommendation": 2-3 sentence hiring recommendation
+- "improvement_suggestions": list of 3-5 actionable suggestions for the candidate
 
-# ==============================================================================
-# Rule-Based Fallback (Always Works)
-# ==============================================================================
-class RuleBasedCoach:
-    """Simple rule-based career coach that works without any ML model."""
-    
-    RESPONSES = {
-        "skill": "Based on your resume, I recommend focusing on building the skills listed in your Skill Gaps tab. Start with the required ones first, then move to recommended skills.",
-        "interview": "For interview preparation: 1) Review the job description carefully, 2) Prepare STAR-format examples for each required skill, 3) Practice coding/technical problems related to your target role.",
-        "resume": "Resume tips: 1) Use action verbs and quantify achievements, 2) Tailor your resume for each application, 3) Keep it to 1-2 pages, 4) Include relevant keywords from the job description.",
-        "career": "Career advice: 1) Build a strong portfolio on GitHub, 2) Network on LinkedIn, 3) Consider certifications in your gap areas, 4) Look for internship/project opportunities to gain practical experience.",
-        "salary": "Salary research: Check Glassdoor, Levels.fyi, and Payscale for your target role and location. Consider total compensation including benefits.",
-        "learn": "For learning new skills: 1) Start with free resources (YouTube, freeCodeCamp), 2) Build small projects to practice, 3) Get certified on Coursera or Udemy, 4) Contribute to open source projects.",
-        "gap": "To close your skill gaps: Focus on one skill at a time from the 'Missing Required' list. Dedicate 1-2 hours daily. Build a mini-project using each new skill to solidify your understanding.",
-        "default": "I can help with: skill development, interview prep, resume tips, career guidance, learning paths, and salary insights. Ask me anything about your career path!"
-    }
-    
-    def generate_response(self, query: str, user_id: str = "") -> str:
-        query_lower = query.lower()
-        for keyword, response in self.RESPONSES.items():
-            if keyword in query_lower:
-                return response
-        return self.RESPONSES["default"]
+Job Description:
+{jd_text}
+
+Resume:
+{resume_text}
+
+Section similarity scores (for context):
+{section_scores}
+
+Return ONLY valid JSON. No explanation outside the JSON block."""
 
 
-# ==============================================================================
-# Model-Based AI Assistant
-# ==============================================================================
-@st.cache_resource(show_spinner="Loading AI Brain... (First run may take time)")
-def load_model_pipeline(model_name: str):
-    """
-    Load the model and tokenizer. Cached by Streamlit to avoid reloading.
-    """
+def _get_api_key() -> str | None:
+    """Retrieve Anthropic API key from env or Streamlit secrets."""
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    if not key:
+        try:
+            key = st.secrets.get("ANTHROPIC_API_KEY")
+        except Exception:
+            pass
+    return key
+
+
+def _call_claude(prompt: str, system: str = "", max_tokens: int = 1024) -> str | None:
+    """Call Anthropic Claude API and return raw text, or None on failure."""
     try:
-        import torch
-        from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
-        
-        logger.info(f"Loading model: {model_name}")
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        
-        # Use GPU if available, otherwise CPU
-        device_type = "cuda" if torch.cuda.is_available() else "cpu"
-        logger.info(f"Using device: {device_type}")
-        
-        dtype = torch.float16 if device_type == "cuda" else torch.float32
-        
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=dtype,
-            device_map="auto" if device_type == "cuda" else None
+        import anthropic
+        api_key = _get_api_key()
+        if not api_key:
+            return None
+        client = anthropic.Anthropic(api_key=api_key)
+        kwargs = dict(
+            model="claude-sonnet-4-20250514",
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
         )
-        
-        if device_type == "cpu":
-            model = model.to("cpu")
-            
-        # Set pad token if missing
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
-            
-        generator = pipeline(
-            "text-generation",
-            model=model,
-            tokenizer=tokenizer,
-            max_new_tokens=150,
-            do_sample=True,
-            temperature=0.7,
-            repetition_penalty=1.2
-        )
-        return generator
+        if system:
+            kwargs["system"] = system
+        message = client.messages.create(**kwargs)
+        return message.content[0].text
     except Exception as e:
-        logger.error(f"Failed to load model: {e}")
+        logger.warning(f"Claude API call failed: {e}")
         return None
 
 
+# ── Rule-based fallback ───────────────────────────────────────────────────────
+class _RuleBasedFeedback:
+    def generate(self, matched_skills, missing_skills, final_score, verdict) -> Dict:
+        suggestions = []
+        if missing_skills:
+            suggestions.append(
+                f"Add proficiency in {', '.join(missing_skills[:3])} — these are explicitly required in the JD."
+            )
+        suggestions += [
+            "Quantify your achievements with numbers and measurable outcomes.",
+            "Tailor your resume summary to mirror keywords in the job description.",
+            "Add relevant certifications for any missing required skills.",
+            "Build a portfolio project that demonstrates the required tech stack.",
+        ]
+        return {
+            "overall_verdict": verdict,
+            "match_percentage": int(final_score),
+            "matched_skills": matched_skills,
+            "missing_skills": missing_skills,
+            "extra_skills": [],
+            "experience_gap": "Unable to determine without AI analysis.",
+            "recommendation": (
+                f"Candidate shows a {verdict.lower()} with a score of {final_score:.0f}%. "
+                "Review skill gaps before proceeding to the interview stage."
+            ),
+            "improvement_suggestions": suggestions[:5],
+            "_source": "rule_based",
+        }
+
+
+# ── Main Feedback Generator ───────────────────────────────────────────────────
+class AIFeedbackGenerator:
+    """
+    Generates structured recruiter feedback.
+    Uses Claude API when available, falls back to rule-based responses.
+    """
+
+    def __init__(self):
+        self._fallback = _RuleBasedFeedback()
+
+    def generate(
+        self,
+        jd_text: str,
+        resume_text: str,
+        section_scores: Dict,
+        matched_skills: List[str],
+        missing_skills: List[str],
+        final_score: float,
+        verdict: str,
+    ) -> Dict:
+        scores_str = "\n".join(f"  {k}: {v:.1f}%" for k, v in section_scores.items())
+        prompt = _FEEDBACK_PROMPT.format(
+            jd_text=jd_text[:3000],
+            resume_text=resume_text[:3000],
+            section_scores=scores_str,
+        )
+
+        raw = _call_claude(prompt, max_tokens=1024)
+        if raw:
+            try:
+                clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+                parsed = json.loads(clean)
+                parsed["_source"] = "claude_api"
+                return parsed
+            except (json.JSONDecodeError, KeyError) as e:
+                logger.warning(f"Failed to parse Claude response: {e}")
+
+        return self._fallback.generate(matched_skills, missing_skills, final_score, verdict)
+
+
+# ── Career Chat Assistant ─────────────────────────────────────────────────────
 class AIAssistant:
     """
-    AI Career Coach with model-based generation + rule-based fallback.
+    Career coaching chat assistant.
+    Uses Claude API for responses when available, otherwise rule-based.
     """
-    
-    def __init__(self, model_name: str = "distilgpt2"):
-        self.model_name = model_name
-        self.fallback = RuleBasedCoach()
-        self.generator = None
-        
-        # Try loading the Stitch MCP client (optional)
-        try:
-            from utils.mcp_client import StitchClient
-            self.stitch = StitchClient()
-        except Exception:
-            self.stitch = None
-        
-        # Try loading the ML model
-        try:
-            self.generator = load_model_pipeline(self.model_name)
-        except Exception as e:
-            logger.warning(f"Model loading failed, using rule-based fallback: {e}")
 
-    def generate_response(self, user_query: str, user_id: str) -> str:
-        """
-        Generate a response. Uses ML model if available, falls back to rules.
-        """
-        # If no model loaded, use rule-based fallback
-        if not self.generator:
-            return self.fallback.generate_response(user_query, user_id)
+    _SYSTEM = (
+        "You are a helpful AI career coach. "
+        "Give concise, practical advice about resume writing, skill development, "
+        "interview preparation, and career planning. Keep answers under 150 words."
+    )
 
-        # 1. Retrieve Context from Stitch (optional)
-        context_str = ""
-        if self.stitch:
-            try:
-                self.stitch.set_session(user_id)
-                memories = self.stitch.retrieve_context(user_query)
-                if memories:
-                    context_str = "Context: " + " | ".join(
-                        [m for m in memories if isinstance(m, str)]
-                    )
-            except Exception:
-                pass  # Stitch is optional
+    _RULES = {
+        "skill":     "Focus on building the skills listed in your Skill Gaps tab — start with Required, then Recommended.",
+        "interview": "Prepare STAR-format examples for each required skill. Research the company and practice coding problems.",
+        "resume":    "Use action verbs, quantify achievements, keep it to 1-2 pages, and mirror keywords from the job description.",
+        "career":    "Build a GitHub portfolio, network on LinkedIn, and pursue certifications in your gap areas.",
+        "salary":    "Check Glassdoor, Levels.fyi, and Payscale for your target role and location.",
+        "learn":     "Start with free resources (YouTube, freeCodeCamp), build small projects, then get certified on Coursera.",
+        "gap":       "Focus on one Missing Required skill at a time. Dedicate 1-2 hours daily and build a mini-project for each.",
+        "default":   "I can help with: skill development, interview prep, resume tips, career guidance, and salary insights.",
+    }
 
-        # 2. Construct Prompt
-        prompt = f"Career Coach Question: {user_query}\n{context_str}\nAdvice:"
-
-        # 3. Generate
-        try:
-            output = self.generator(prompt, return_full_text=False)
-            response = output[0]['generated_text'].strip()
-            
-            # If response is too short or garbled, use fallback
-            if len(response) < 10:
-                return self.fallback.generate_response(user_query, user_id)
-            
-            # 4. Store Interaction (Best Effort)
-            if self.stitch:
-                try:
-                    self.stitch.store_memory(
-                        key=f"chat_{user_id}",
-                        content=f"Q: {user_query} | A: {response}",
-                        metadata={"timestamp": "now"}
-                    )
-                except Exception as e:
-                    logger.warning(f"Failed to save memory: {e}")
-            
-            return response
-        except Exception as e:
-            logger.error(f"Generation failed: {e}")
-            return self.fallback.generate_response(user_query, user_id)
+    def generate_response(self, user_query: str, user_id: str = "") -> str:
+        raw = _call_claude(user_query, system=self._SYSTEM, max_tokens=300)
+        if raw:
+            return raw.strip()
+        # Keyword fallback
+        q = user_query.lower()
+        for kw, resp in self._RULES.items():
+            if kw in q:
+                return resp
+        return self._RULES["default"]

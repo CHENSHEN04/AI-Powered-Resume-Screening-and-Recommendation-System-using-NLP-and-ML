@@ -77,8 +77,14 @@ for k, v in DEFAULTS.items():
 # ==============================================================================
 # Sidebar – Auth + Navigation
 # ==============================================================================
+@st.cache_resource
+def _get_db():
+    """Cached DB client — only initialised once per server process."""
+    return DatabaseManager()
+
+
 def render_sidebar():
-    db = DatabaseManager()
+    db = _get_db()
     with st.sidebar:
         st.markdown("# 🎯 Career Coach")
         st.caption("AI-Powered Resume Analysis")
@@ -255,7 +261,7 @@ def render_upload_stage():
 
 def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = ""):
     """Run the full analysis pipeline and advance to teaser stage."""
-    db = DatabaseManager()
+    db = _get_db()
     progress = st.progress(0, text="Starting analysis...")
 
     # 1. Parse
@@ -344,7 +350,7 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = ""):
     if jd_text and jd_match_result:
         progress.progress(75, text="⚖️ Computing weighted score...")
         try:
-            from utils.weighted_scorer import compute_final_score  # type: ignore[import-not-found]
+            from utils.weighted_scorer import compute_final_score
             score_result = compute_final_score(
                 bert_score=jd_match_result["overall_score"],
                 matched_skills=matched_skills,
@@ -591,7 +597,7 @@ def render_review_stage():
             st.session_state["skill_data"]["count"] = len(final_skills)
 
             from utils.gap_analyzer import GapAnalyzer
-            db = DatabaseManager()
+            db = _get_db()
             analyzer = GapAnalyzer(db)
             new_analysis = analyzer.analyze_gaps(final_skills, st.session_state["target_role"])
             st.session_state["gap_analysis"] = new_analysis
@@ -649,7 +655,7 @@ def render_builder_stage():
         st.session_state["prediction"] = {"top_category": target, "confidence": 0.5, "all_scores": {target: 0.5}}
 
         from utils.gap_analyzer import GapAnalyzer
-        db = DatabaseManager()
+        db = _get_db()
         analyzer = GapAnalyzer(db)
         analysis = analyzer.analyze_gaps(skills_list, target)
         st.session_state["gap_analysis"] = analysis
@@ -933,7 +939,7 @@ def render_dashboard_stage():
     user = st.session_state.get("user")
     if user and not st.session_state.get("is_anonymous"):
         with st.expander("📜 Your Analysis History"):
-            db = DatabaseManager()
+            db = _get_db()
             history = db.get_user_history(user.id)
             if history:
                 df = pd.DataFrame(history)

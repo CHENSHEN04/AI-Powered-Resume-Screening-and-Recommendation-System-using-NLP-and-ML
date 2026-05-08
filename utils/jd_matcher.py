@@ -1,3 +1,13 @@
+"""
+Semantic Matcher Module
+=======================
+Uses BERT-based sentence transformers for semantic similarity matching.
+Complements TF-IDF/SVM with contextual understanding.
+
+Performance fix: category embeddings are now computed ONCE and cached at the
+Streamlit resource level — never recomputed across reruns or re-instantiations.
+"""
+
 import re
 import numpy as np
 import streamlit as st
