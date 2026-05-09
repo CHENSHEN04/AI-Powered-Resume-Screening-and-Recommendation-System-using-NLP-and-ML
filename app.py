@@ -902,7 +902,17 @@ def render_dashboard_stage():
             st.warning("⚠️ AI Assistant not available.")
         else:
             if "ai_agent" not in st.session_state:
-                st.session_state["ai_agent"] = AIAssistant()
+                # Bug 3 fix: pass candidate context so responses are specific, not generic
+                ai_context = {
+                    "target_role":   st.session_state.get("target_role", "Unknown"),
+                    "match_score":   st.session_state.get("weighted_score_result", {}).get("final_score")
+                                     or st.session_state.get("gap_analysis", {}).get("match_percentage", 0),
+                    "skills_found":  st.session_state.get("skill_data", {}).get("all_skills", []),
+                    "missing_skills":st.session_state.get("missing_skills",
+                                     st.session_state.get("gap_analysis", {}).get("missing_required", [])),
+                    "verdict":       st.session_state.get("weighted_score_result", {}).get("verdict", ""),
+                }
+                st.session_state["ai_agent"] = AIAssistant(context=ai_context)
             for msg in st.session_state["chat_history"]:
                 with st.chat_message("user" if msg["role"] == "user" else "assistant"):
                     st.write(msg["content"])
@@ -911,11 +921,12 @@ def render_dashboard_stage():
                 with st.chat_message("user"):
                     st.write(prompt)
                 with st.chat_message("assistant"):
-                    with st.spinner("Thinking..."):
-                        user = st.session_state.get("user")
-                        user_id = user.id if user else "guest"
-                        response = st.session_state["ai_agent"].generate_response(prompt, user_id)
-                        st.write(response)
+                    # Bug 3 fix: stream tokens in real time instead of waiting for full response
+                    user = st.session_state.get("user")
+                    user_id = user.id if user else "guest"
+                    response = st.write_stream(
+                        st.session_state["ai_agent"].generate_stream(prompt)
+                    )
                 st.session_state["chat_history"].append({"role": "assistant", "content": response})
 
     st.markdown("---")

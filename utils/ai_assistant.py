@@ -10,11 +10,11 @@ import json
 import logging
 import os
 import streamlit as st
-from typing import Dict, List
+from typing import Dict, List, Generator
 
 logger = logging.getLogger(__name__)
 
-# ── Structured prompt template (spec Section 2, Stage 3) ─────────────────────
+# ── Structured recruiter-feedback prompt ──────────────────────────────────────
 _FEEDBACK_PROMPT = """You are an expert technical recruiter. Given the following job description and candidate resume, provide structured feedback in JSON format with these exact keys:
 - "overall_verdict": one of ["Strong Match", "Moderate Match", "Weak Match"]
 - "match_percentage": integer 0-100
@@ -36,9 +36,22 @@ Section similarity scores (for context):
 
 Return ONLY valid JSON. No explanation outside the JSON block."""
 
+# ── Career coach system prompt (context-aware) ────────────────────────────────
+_COACH_SYSTEM = """You are a sharp, empathetic AI career coach with deep knowledge of tech hiring.
+You have access to this candidate's profile:
+
+Target Role   : {target_role}
+Match Score   : {match_score}%
+Skills Found  : {skills_found}
+Missing Skills: {missing_skills}
+Verdict       : {verdict}
+
+Give concise, SPECIFIC advice that references the candidate's actual skills and gaps above.
+Do NOT give generic advice — always tie your answer back to their profile.
+Keep answers under 200 words. Use bullet points for lists."""
+
 
 def _get_api_key() -> str | None:
-    """Retrieve Anthropic API key from env or Streamlit secrets."""
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         try:
@@ -48,25 +61,16 @@ def _get_api_key() -> str | None:
     return key
 
 
-def _call_claude(prompt: str, system: str = "", max_tokens: int = 1024) -> str | None:
-    """Call Anthropic Claude API and return raw text, or None on failure."""
+def _build_client():
+    """Return an Anthropic client or None."""
     try:
         import anthropic
         api_key = _get_api_key()
         if not api_key:
             return None
-        client = anthropic.Anthropic(api_key=api_key)
-        kwargs = dict(
-            model="claude-sonnet-4-20250514",
-            max_tokens=max_tokens,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        if system:
-            kwargs["system"] = system
-        message = client.messages.create(**kwargs)
-        return message.content[0].text
+        return anthropic.Anthropic(api_key=api_key)
     except Exception as e:
-        logger.warning(f"Claude API call failed: {e}")
+        logger.warning(f"Could not build Anthropic client: {e}")
         return None
 
 
@@ -100,76 +104,124 @@ class _RuleBasedFeedback:
         }
 
 
-# ── Main Feedback Generator ───────────────────────────────────────────────────
+# ── Feedback Generator ────────────────────────────────────────────────────────
 class AIFeedbackGenerator:
-    """
-    Generates structured recruiter feedback.
-    Uses Claude API when available, falls back to rule-based responses.
-    """
-
     def __init__(self):
         self._fallback = _RuleBasedFeedback()
 
-    def generate(
-        self,
-        jd_text: str,
-        resume_text: str,
-        section_scores: Dict,
-        matched_skills: List[str],
-        missing_skills: List[str],
-        final_score: float,
-        verdict: str,
-    ) -> Dict:
+    def generate(self, jd_text, resume_text, section_scores, matched_skills,
+                 missing_skills, final_score, verdict) -> Dict:
         scores_str = "\n".join(f"  {k}: {v:.1f}%" for k, v in section_scores.items())
         prompt = _FEEDBACK_PROMPT.format(
             jd_text=jd_text[:3000],
             resume_text=resume_text[:3000],
             section_scores=scores_str,
         )
-
-        raw = _call_claude(prompt, max_tokens=1024)
-        if raw:
+        client = _build_client()
+        if client:
             try:
+                msg = client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=1024,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                raw = msg.content[0].text
                 clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
                 parsed = json.loads(clean)
                 parsed["_source"] = "claude_api"
                 return parsed
-            except (json.JSONDecodeError, KeyError) as e:
-                logger.warning(f"Failed to parse Claude response: {e}")
-
+            except Exception as e:
+                logger.warning(f"AIFeedbackGenerator failed: {e}")
         return self._fallback.generate(matched_skills, missing_skills, final_score, verdict)
 
 
-# ── Career Chat Assistant ─────────────────────────────────────────────────────
+# ── Career Chat Assistant (with streaming) ────────────────────────────────────
 class AIAssistant:
     """
-    Career coaching chat assistant.
-    Uses Claude API for responses when available, otherwise rule-based.
-    """
+    Context-aware career coaching chat assistant.
 
-    _SYSTEM = (
-        "You are a helpful AI career coach. "
-        "Give concise, practical advice about resume writing, skill development, "
-        "interview preparation, and career planning. Keep answers under 150 words."
-    )
+    Usage in app.py (streaming — Bug 3 fix):
+        with st.chat_message("assistant"):
+            response = st.write_stream(agent.generate_stream(prompt))
+        st.session_state["chat_history"].append({"role": "assistant", "content": response})
+
+    Usage (non-streaming fallback):
+        response = agent.generate_response(prompt)
+    """
 
     _RULES = {
         "skill":     "Focus on building the skills listed in your Skill Gaps tab — start with Required, then Recommended.",
-        "interview": "Prepare STAR-format examples for each required skill. Research the company and practice coding problems.",
+        "interview": "Prepare STAR-format examples for each required skill. Research the company and practise coding problems.",
         "resume":    "Use action verbs, quantify achievements, keep it to 1-2 pages, and mirror keywords from the job description.",
         "career":    "Build a GitHub portfolio, network on LinkedIn, and pursue certifications in your gap areas.",
         "salary":    "Check Glassdoor, Levels.fyi, and Payscale for your target role and location.",
         "learn":     "Start with free resources (YouTube, freeCodeCamp), build small projects, then get certified on Coursera.",
         "gap":       "Focus on one Missing Required skill at a time. Dedicate 1-2 hours daily and build a mini-project for each.",
-        "default":   "I can help with: skill development, interview prep, resume tips, career guidance, and salary insights.",
+        "default":   "I can help with skill development, interview prep, resume tips, career guidance, and salary insights.",
     }
 
+    def __init__(self, context: Dict = None):
+        """
+        Args:
+            context: Dict with candidate profile keys:
+                     target_role, match_score, skills_found, missing_skills, verdict
+        """
+        self.context = context or {}
+
+    def _build_system(self) -> str:
+        """Build a context-enriched system prompt from the candidate's profile."""
+        return _COACH_SYSTEM.format(
+            target_role  =self.context.get("target_role",   "Unknown"),
+            match_score  =self.context.get("match_score",   "N/A"),
+            skills_found =", ".join(self.context.get("skills_found",   [])[:15]) or "Not analysed yet",
+            missing_skills=", ".join(self.context.get("missing_skills", [])[:10]) or "None",
+            verdict      =self.context.get("verdict",       "Not analysed yet"),
+        )
+
+    def generate_stream(self, user_query: str) -> Generator[str, None, None]:
+        """
+        Stream tokens from Claude in real time.
+        Designed for use with st.write_stream().
+
+        Yields:
+            str chunks as they arrive from the API.
+        Falls back to yielding the rule-based response in one chunk.
+        """
+        client = _build_client()
+        if client:
+            try:
+                with client.messages.stream(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=400,
+                    system=self._build_system(),
+                    messages=[{"role": "user", "content": user_query}],
+                ) as stream:
+                    for text in stream.text_stream:
+                        yield text
+                return
+            except Exception as e:
+                logger.warning(f"Streaming failed: {e}")
+        # Fallback — yield rule-based answer as a single chunk
+        yield self._rule_based(user_query)
+
     def generate_response(self, user_query: str, user_id: str = "") -> str:
-        raw = _call_claude(user_query, system=self._SYSTEM, max_tokens=300)
-        if raw:
-            return raw.strip()
-        # Keyword fallback
-        q = user_query.lower()
+        """Non-streaming response (kept for backward compatibility)."""
+        client = _build_client()
+        if client:
+            try:
+                msg = client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=400,
+                    system=self._build_system(),
+                    messages=[{"role": "user", "content": user_query}],
+                )
+                return msg.content[0].text.strip()
+            except Exception as e:
+                logger.warning(f"generate_response failed: {e}")
+        return self._rule_based(user_query)
+
+    def _rule_based(self, query: str) -> str:
+        q = query.lower()
         for kw, resp in self._RULES.items():
             if kw in q:
                 return resp
