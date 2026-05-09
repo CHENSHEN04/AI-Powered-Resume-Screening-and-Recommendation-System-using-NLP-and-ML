@@ -129,6 +129,31 @@ class GapAnalyzer:
             "learning_paths": learning_paths
         }
     
+
+    def get_all_known_roles(self) -> list:
+        """
+        Return a sorted list of all role titles known to the system.
+        Merges DB roles (live) with local JSON roles (fallback).
+        Used to populate the role selector dropdown on the upload page.
+
+        Returns:
+            List of (display_title, slug) tuples, sorted alphabetically.
+        """
+        known = {}
+
+        # 1. Load from local JSON (always available)
+        for slug, data in self.standards.get("job_categories", {}).items():
+            title = data.get("title", slug.replace("_", " ").title())
+            known[slug] = title
+
+        # 2. Merge DB roles (override JSON if same slug exists)
+        if self.db_manager:
+            db_roles = self.db_manager.get_all_role_titles()
+            for title, slug in db_roles:
+                known[slug] = title
+
+        return sorted([(title, slug) for slug, title in known.items()], key=lambda x: x[0])
+
     def _normalize_role_name(self, role_name: str) -> str:
         """Convert role name to json key format (e.g. 'Data Scientist' -> 'data_scientist')."""
         # This mapping might need to be more robust depending on classifier output

@@ -240,6 +240,80 @@ class DatabaseManager:
             # st.error(f"DB Error fetching standards: {e}")
             return None
 
+
+    def save_custom_role(self, role_title: str, role_slug: str,
+                         required_skills: list, recommended_skills: list,
+                         nice_to_have_skills: list) -> tuple:
+        """
+        Upsert a user-defined job role into job_categories + market_standards tables.
+
+        Args:
+            role_title:           Human-readable title, e.g. "ML Engineer"
+            role_slug:            snake_case key, e.g. "ml_engineer"
+            required_skills:      List of skill name strings (importance = required)
+            recommended_skills:   List of skill name strings (importance = recommended)
+            nice_to_have_skills:  List of skill name strings (importance = nice_to_have)
+
+        Returns:
+            (True, None) on success, (False, error_message) on failure.
+        """
+        if not self.supabase:
+            return False, "Database not connected."
+        try:
+            # 1. Upsert the job category row
+            cat_res = self.supabase.table("job_categories").upsert(
+                {"slug": role_slug, "title": role_title,
+                 "weights": {"required": 1.0, "recommended": 0.6, "nice_to_have": 0.3}},
+                on_conflict="slug"
+            ).execute()
+
+            if not cat_res.data:
+                return False, "Failed to save job category."
+
+            cat_id = cat_res.data[0]["id"]
+
+            # 2. Delete old market_standards rows for this category (clean slate)
+            self.supabase.table("market_standards") \
+                .delete().eq("job_category_id", cat_id).execute()
+
+            # 3. Upsert skills and market_standards rows
+            all_skills = (
+                [(s, "required")    for s in required_skills    if s.strip()] +
+                [(s, "recommended") for s in recommended_skills if s.strip()] +
+                [(s, "nice_to_have") for s in nice_to_have_skills if s.strip()]
+            )
+
+            for skill_name, importance in all_skills:
+                # Upsert skill into skills table
+                skill_res = self.supabase.table("skills").upsert(
+                    {"name": skill_name.strip()}, on_conflict="name"
+                ).execute()
+                if not skill_res.data:
+                    continue
+                skill_id = skill_res.data[0]["id"]
+
+                # Insert market_standards row
+                self.supabase.table("market_standards").insert({
+                    "job_category_id": cat_id,
+                    "skill_id": skill_id,
+                    "importance_level": importance
+                }).execute()
+
+            return True, None
+
+        except Exception as e:
+            return False, str(e)
+
+    def get_all_role_titles(self) -> list:
+        """Return list of all known role titles from DB for the role selector dropdown."""
+        if not self.supabase:
+            return []
+        try:
+            res = self.supabase.table("job_categories").select("title, slug").execute()
+            return [(r["title"], r["slug"]) for r in (res.data or [])]
+        except Exception:
+            return []
+
     def get_learning_resources(self, skill_names: List[str]) -> Dict[str, List[Dict]]:
         """
         Fetch learning resources for a list of skills.

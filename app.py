@@ -66,6 +66,8 @@ DEFAULTS = {
     "reviewed_skills": None,
     # ── NEW: JD fields ──
     "jd_text": "",                  # raw job description input
+    "selected_role": None,          # user-chosen role from dropdown
+    "custom_role_saved": False,     # whether a custom role was saved this session
     "jd_match_result": None,        # output from JDMatcher
     "weighted_score_result": None,  # output from weighted_scorer
     "ai_feedback": None,            # output from AIFeedbackGenerator
@@ -205,21 +207,111 @@ def render_upload_stage():
         )
 
     with right_col:
-        st.markdown("### 💼 Paste Job Description")
+        st.markdown("### 💼 Job Details")
+
+        # ── Part 1: Role Selector ─────────────────────────────────────────────
+        st.markdown("**🎯 Select the Role You Are Applying For**")
+        try:
+            from utils.gap_analyzer import GapAnalyzer
+            _db_for_roles = _get_db()
+            _analyzer_for_roles = GapAnalyzer(_db_for_roles)
+            all_roles = _analyzer_for_roles.get_all_known_roles()  # [(title, slug), ...]
+        except Exception:
+            all_roles = []
+
+        role_titles   = ["— Select a role —"] + [t for t, s in all_roles]
+        role_slugs    = [None]                 + [s for t, s in all_roles]
+        saved_role    = st.session_state.get("selected_role")
+        default_idx   = 0
+        if saved_role:
+            for i, slug in enumerate(role_slugs):
+                if slug == saved_role:
+                    default_idx = i
+                    break
+
+        chosen_idx = st.selectbox(
+            "Role",
+            range(len(role_titles)),
+            format_func=lambda i: role_titles[i],
+            index=default_idx,
+            key="role_selector_upload",
+            label_visibility="collapsed",
+        )
+        if chosen_idx > 0:
+            st.session_state["selected_role"] = role_slugs[chosen_idx]
+            st.caption(f"✅ Selected: **{role_titles[chosen_idx]}**")
+        else:
+            st.session_state["selected_role"] = None
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # ── Part 2: Add Custom Role ───────────────────────────────────────────
+        with st.expander("➕ Add a New Role to the Database", expanded=False):
+            st.caption("Can't find your role above? Define it here and it will be saved for future screenings.")
+            new_role_title = st.text_input(
+                "Role Title",
+                placeholder="e.g. ML Engineer, DevOps Architect",
+                key="new_role_title"
+            )
+            c1, c2 = st.columns(2)
+            with c1:
+                new_req = st.text_area(
+                    "Required Skills (one per line)",
+                    placeholder="Python\nDocker\nKubernetes",
+                    height=100,
+                    key="new_role_required"
+                )
+            with c2:
+                new_rec = st.text_area(
+                    "Recommended Skills (one per line)",
+                    placeholder="Terraform\nAnsible\nCI/CD",
+                    height=100,
+                    key="new_role_recommended"
+                )
+            new_nice = st.text_area(
+                "Bonus / Nice-to-Have Skills (one per line)",
+                placeholder="Go\nRust\nDatadog",
+                height=70,
+                key="new_role_nice"
+            )
+            if st.button("💾 Save Role to Database", use_container_width=True, key="save_role_btn"):
+                if not new_role_title.strip():
+                    st.warning("Please enter a role title.")
+                else:
+                    _slug = new_role_title.strip().lower().replace(" ", "_").replace("/", "_")
+                    _req  = [s.strip() for s in new_req.strip().splitlines()  if s.strip()]
+                    _rec  = [s.strip() for s in new_rec.strip().splitlines()  if s.strip()]
+                    _nice = [s.strip() for s in new_nice.strip().splitlines() if s.strip()]
+                    _db   = _get_db()
+                    ok, err = _db.save_custom_role(
+                        new_role_title.strip(), _slug, _req, _rec, _nice
+                    )
+                    if ok:
+                        st.success(f"✅ **{new_role_title.strip()}** saved! It will appear in the role selector above on next load.")
+                        st.session_state["custom_role_saved"] = True
+                        st.session_state["selected_role"] = _slug
+                    else:
+                        st.error(f"❌ Could not save: {err}")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # ── Part 3: Job Description Textarea ─────────────────────────────────
+        st.markdown("**📋 Paste Job Description** *(optional but recommended)*")
         jd_text = st.text_area(
-            "Paste the full job description here",
+            "JD",
             value=st.session_state.get("jd_text", ""),
-            height=220,
+            height=160,
             placeholder="e.g. We are looking for a Python Developer with 3+ years experience in Django, REST APIs, PostgreSQL...",
             help="The more complete the JD, the more accurate the match score.",
-            key="jd_input"
+            key="jd_input",
+            label_visibility="collapsed",
         )
         if jd_text:
             word_count = len(jd_text.split())
             if word_count < 50:
-                st.warning(f"⚠️ JD is short ({word_count} words). A longer description gives more accurate results.")
+                st.warning(f"⚠️ JD is short ({word_count} words). A longer description improves accuracy.")
             else:
-                st.caption(f"✅ {word_count} words — good length for analysis.")
+                st.caption(f"✅ {word_count} words — good length.")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -301,11 +393,20 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = ""):
     st.session_state["explanation"] = classifier.explain_prediction(resume_text)
 
     # 4. Determine target role
+    # Priority: (1) user-selected role > (2) SVM prediction > (3) skill-based fallback
+    user_selected_role = st.session_state.get("selected_role")
     role_cats = extractor.map_to_category(skill_data["all_skills"])
     top_skill_cat = list(role_cats.keys())[0] if role_cats else "Unknown"
-    target_role = prediction["top_category"]
-    if target_role == "Unknown" or str(target_role).isdigit():
+    svm_role = prediction["top_category"]
+
+    if user_selected_role:
+        # User explicitly picked a role — always honour it
+        target_role = user_selected_role
+    elif svm_role and svm_role != "Unknown" and not str(svm_role).isdigit():
+        target_role = svm_role
+    else:
         target_role = top_skill_cat
+
     st.session_state["target_role"] = target_role
 
     # 5. JD-specific BERT matching (NEW)
@@ -902,17 +1003,7 @@ def render_dashboard_stage():
             st.warning("⚠️ AI Assistant not available.")
         else:
             if "ai_agent" not in st.session_state:
-                # Bug 3 fix: pass candidate context so responses are specific, not generic
-                ai_context = {
-                    "target_role":   st.session_state.get("target_role", "Unknown"),
-                    "match_score":   st.session_state.get("weighted_score_result", {}).get("final_score")
-                                     or st.session_state.get("gap_analysis", {}).get("match_percentage", 0),
-                    "skills_found":  st.session_state.get("skill_data", {}).get("all_skills", []),
-                    "missing_skills":st.session_state.get("missing_skills",
-                                     st.session_state.get("gap_analysis", {}).get("missing_required", [])),
-                    "verdict":       st.session_state.get("weighted_score_result", {}).get("verdict", ""),
-                }
-                st.session_state["ai_agent"] = AIAssistant(context=ai_context)
+                st.session_state["ai_agent"] = AIAssistant()
             for msg in st.session_state["chat_history"]:
                 with st.chat_message("user" if msg["role"] == "user" else "assistant"):
                     st.write(msg["content"])
@@ -921,12 +1012,11 @@ def render_dashboard_stage():
                 with st.chat_message("user"):
                     st.write(prompt)
                 with st.chat_message("assistant"):
-                    # Bug 3 fix: stream tokens in real time instead of waiting for full response
-                    user = st.session_state.get("user")
-                    user_id = user.id if user else "guest"
-                    response = st.write_stream(
-                        st.session_state["ai_agent"].generate_stream(prompt)
-                    )
+                    with st.spinner("Thinking..."):
+                        user = st.session_state.get("user")
+                        user_id = user.id if user else "guest"
+                        response = st.session_state["ai_agent"].generate_response(prompt, user_id)
+                        st.write(response)
                 st.session_state["chat_history"].append({"role": "assistant", "content": response})
 
     st.markdown("---")
