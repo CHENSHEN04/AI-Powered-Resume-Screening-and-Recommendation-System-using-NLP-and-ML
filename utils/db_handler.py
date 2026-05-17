@@ -241,18 +241,47 @@ class DatabaseManager:
             return None
 
 
+    def find_similar_roles(self, role_title: str) -> list:
+        """
+        Search for roles with a similar title to detect duplicates before saving.
+
+        Uses case-insensitive partial matching on both slug and title.
+        Returns list of (title, slug) tuples that are similar.
+        """
+        if not self.supabase:
+            return []
+        try:
+            slug_query = role_title.lower().replace(" ", "_").replace("/", "_")
+            # Search by title similarity
+            by_title = self.supabase.table("job_categories") \
+                .select("title, slug") \
+                .ilike("title", f"%{role_title}%") \
+                .limit(5).execute()
+            # Search by slug similarity
+            by_slug = self.supabase.table("job_categories") \
+                .select("title, slug") \
+                .ilike("slug", f"%{slug_query}%") \
+                .limit(5).execute()
+            # Merge and deduplicate
+            seen, results = set(), []
+            for row in (by_title.data or []) + (by_slug.data or []):
+                if row["slug"] not in seen:
+                    seen.add(row["slug"])
+                    results.append((row["title"], row["slug"]))
+            return results
+        except Exception:
+            return []
+
     def save_custom_role(self, role_title: str, role_slug: str,
                          required_skills: list, recommended_skills: list,
                          nice_to_have_skills: list) -> tuple:
         """
         Upsert a user-defined job role into job_categories + market_standards tables.
 
-        Args:
-            role_title:           Human-readable title, e.g. "ML Engineer"
-            role_slug:            snake_case key, e.g. "ml_engineer"
-            required_skills:      List of skill name strings (importance = required)
-            recommended_skills:   List of skill name strings (importance = recommended)
-            nice_to_have_skills:  List of skill name strings (importance = nice_to_have)
+        Fixes vs previous version:
+        - Uses .select() after upsert so Supabase returns the row id reliably
+        - Fetches skill id via SELECT when upsert returns no data (existing row)
+        - Uses upsert on market_standards to avoid duplicate rows on re-save
 
         Returns:
             (True, None) on success, (False, error_message) on failure.
@@ -260,44 +289,58 @@ class DatabaseManager:
         if not self.supabase:
             return False, "Database not connected."
         try:
-            # 1. Upsert the job category row
-            cat_res = self.supabase.table("job_categories").upsert(
-                {"slug": role_slug, "title": role_title,
-                 "weights": {"required": 1.0, "recommended": 0.6, "nice_to_have": 0.3}},
-                on_conflict="slug"
-            ).execute()
+            # 1. Upsert job category, then fetch the row id separately
+            # NOTE: supabase-py v2 upsert() returns SyncQueryRequestBuilder which
+            # does NOT support .select() chaining — fetch id via a follow-up SELECT.
+            self.supabase.table("job_categories") \
+                .upsert(
+                    {"slug": role_slug, "title": role_title,
+                     "weights": {"required": 1.0, "recommended": 0.6, "nice_to_have": 0.3}},
+                    on_conflict="slug"
+                ).execute()
 
-            if not cat_res.data:
-                return False, "Failed to save job category."
+            # Fetch the category id after upsert
+            cat_fetch = self.supabase.table("job_categories") \
+                .select("id").eq("slug", role_slug).execute()
+            if not cat_fetch.data:
+                return False, "Could not save or retrieve the job category. Check your database permissions."
+            cat_id = cat_fetch.data[0]["id"]
 
-            cat_id = cat_res.data[0]["id"]
-
-            # 2. Delete old market_standards rows for this category (clean slate)
+            # 2. Delete old market_standards for this category (clean slate on re-save)
             self.supabase.table("market_standards") \
                 .delete().eq("job_category_id", cat_id).execute()
 
-            # 3. Upsert skills and market_standards rows
+            # 3. Build full skills list
             all_skills = (
-                [(s, "required")    for s in required_skills    if s.strip()] +
-                [(s, "recommended") for s in recommended_skills if s.strip()] +
-                [(s, "nice_to_have") for s in nice_to_have_skills if s.strip()]
+                [(s.strip(), "required")     for s in required_skills     if s.strip()] +
+                [(s.strip(), "recommended")  for s in recommended_skills  if s.strip()] +
+                [(s.strip(), "nice_to_have") for s in nice_to_have_skills if s.strip()]
             )
 
-            for skill_name, importance in all_skills:
-                # Upsert skill into skills table
-                skill_res = self.supabase.table("skills").upsert(
-                    {"name": skill_name.strip()}, on_conflict="name"
-                ).execute()
-                if not skill_res.data:
-                    continue
-                skill_id = skill_res.data[0]["id"]
+            if not all_skills:
+                return True, None  # Saved role with no skills — valid
 
-                # Insert market_standards row
-                self.supabase.table("market_standards").insert({
-                    "job_category_id": cat_id,
-                    "skill_id": skill_id,
-                    "importance_level": importance
-                }).execute()
+            for skill_name, importance in all_skills:
+                # Upsert skill, then fetch id separately
+                # NOTE: .select() cannot be chained on upsert() in supabase-py v2
+                self.supabase.table("skills") \
+                    .upsert({"name": skill_name}, on_conflict="name") \
+                    .execute()
+
+                # Fetch skill id after upsert
+                fetch = self.supabase.table("skills") \
+                    .select("id").eq("name", skill_name).execute()
+                if not fetch.data:
+                    continue  # Skip this skill if we truly can't get its id
+                skill_id = fetch.data[0]["id"]
+
+                # Upsert market_standards (prevents duplicates on re-save)
+                self.supabase.table("market_standards") \
+                    .upsert(
+                        {"job_category_id": cat_id, "skill_id": skill_id,
+                         "importance_level": importance},
+                        on_conflict="job_category_id,skill_id"
+                    ).execute()
 
             return True, None
 

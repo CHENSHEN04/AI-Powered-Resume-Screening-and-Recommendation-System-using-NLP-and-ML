@@ -68,6 +68,8 @@ DEFAULTS = {
     "jd_text": "",                  # raw job description input
     "selected_role": None,          # user-chosen role from dropdown
     "custom_role_saved": False,     # whether a custom role was saved this session
+    "similar_roles_found": [],      # similar roles found during duplicate check
+    "role_creation_confirmed": False, # user confirmed they want a new role despite similar existing
     "jd_match_result": None,        # output from JDMatcher
     "weighted_score_result": None,  # output from weighted_scorer
     "ai_feedback": None,            # output from AIFeedbackGenerator
@@ -248,51 +250,101 @@ def render_upload_stage():
         # ── Part 2: Add Custom Role ───────────────────────────────────────────
         with st.expander("➕ Add a New Role to the Database", expanded=False):
             st.caption("Can't find your role above? Define it here and it will be saved for future screenings.")
+
             new_role_title = st.text_input(
                 "Role Title",
                 placeholder="e.g. ML Engineer, DevOps Architect",
                 key="new_role_title"
             )
-            c1, c2 = st.columns(2)
-            with c1:
-                new_req = st.text_area(
-                    "Required Skills (one per line)",
-                    placeholder="Python\nDocker\nKubernetes",
-                    height=100,
-                    key="new_role_required"
-                )
-            with c2:
-                new_rec = st.text_area(
-                    "Recommended Skills (one per line)",
-                    placeholder="Terraform\nAnsible\nCI/CD",
-                    height=100,
-                    key="new_role_recommended"
-                )
-            new_nice = st.text_area(
-                "Bonus / Nice-to-Have Skills (one per line)",
-                placeholder="Go\nRust\nDatadog",
-                height=70,
-                key="new_role_nice"
-            )
-            if st.button("💾 Save Role to Database", use_container_width=True, key="save_role_btn"):
-                if not new_role_title.strip():
-                    st.warning("Please enter a role title.")
-                else:
-                    _slug = new_role_title.strip().lower().replace(" ", "_").replace("/", "_")
-                    _req  = [s.strip() for s in new_req.strip().splitlines()  if s.strip()]
-                    _rec  = [s.strip() for s in new_rec.strip().splitlines()  if s.strip()]
-                    _nice = [s.strip() for s in new_nice.strip().splitlines() if s.strip()]
-                    _db   = _get_db()
-                    ok, err = _db.save_custom_role(
-                        new_role_title.strip(), _slug, _req, _rec, _nice
-                    )
-                    if ok:
-                        st.success(f"✅ **{new_role_title.strip()}** saved! It will appear in the role selector above on next load.")
-                        st.session_state["custom_role_saved"] = True
-                        st.session_state["selected_role"] = _slug
-                    else:
-                        st.error(f"❌ Could not save: {err}")
 
+            # ── Step 1: Similarity check when title changes ───────────────────
+            if new_role_title.strip():
+                prev = st.session_state.get("_prev_role_title_check", "")
+                if new_role_title.strip().lower() != prev.lower():
+                    st.session_state["similar_roles_found"]     = []
+                    st.session_state["role_creation_confirmed"] = False
+                    st.session_state["_prev_role_title_check"]  = new_role_title.strip()
+                if not st.session_state.get("similar_roles_found") and                    not st.session_state.get("role_creation_confirmed"):
+                    _similar = _get_db().find_similar_roles(new_role_title.strip())
+                    st.session_state["similar_roles_found"] = _similar
+
+            similar   = st.session_state.get("similar_roles_found", [])
+            confirmed = st.session_state.get("role_creation_confirmed", False)
+
+            # ── Step 2: "Are you referring to…?" prompt ───────────────────────
+            if similar and not confirmed:
+                st.warning("⚠️ Similar roles already exist in the database:")
+                for s_title, s_slug in similar:
+                    ca, cb = st.columns([3, 1])
+                    with ca:
+                        st.markdown(f"&nbsp;&nbsp;• **{s_title}**", unsafe_allow_html=True)
+                    with cb:
+                        if st.button("Use this", key=f"use_existing_{s_slug}"):
+                            st.session_state["selected_role"]       = s_slug
+                            st.session_state["similar_roles_found"] = []
+                            st.session_state["role_creation_confirmed"] = False
+                            st.success(f"✅ Selected **{s_title}** as your target role.")
+                            st.rerun()
+                st.markdown("---")
+                cy, cn = st.columns(2)
+                with cy:
+                    if st.button("➕ No, create a new role anyway",
+                                 use_container_width=True, key="confirm_new_role"):
+                        st.session_state["role_creation_confirmed"] = True
+                        st.session_state["similar_roles_found"]     = []
+                        st.rerun()
+                with cn:
+                    if st.button("✖ Cancel", use_container_width=True, key="cancel_new_role"):
+                        st.session_state["similar_roles_found"]     = []
+                        st.session_state["role_creation_confirmed"] = False
+                        st.rerun()
+
+            # ── Step 3: Skill fields — shown only when no blocking prompt ─────
+            elif not similar or confirmed:
+                c1, c2 = st.columns(2)
+                with c1:
+                    new_req = st.text_area(
+                        "Required Skills (one per line)",
+                        placeholder="Python\nDocker\nKubernetes",
+                        height=100, key="new_role_required"
+                    )
+                with c2:
+                    new_rec = st.text_area(
+                        "Recommended Skills (one per line)",
+                        placeholder="Terraform\nAnsible\nCI/CD",
+                        height=100, key="new_role_recommended"
+                    )
+                new_nice = st.text_area(
+                    "Bonus / Nice-to-Have Skills (one per line)",
+                    placeholder="Go\nRust\nDatadog",
+                    height=70, key="new_role_nice"
+                )
+                if st.button("💾 Save Role to Database",
+                             use_container_width=True, key="save_role_btn"):
+                    if not new_role_title.strip():
+                        st.warning("Please enter a role title.")
+                    else:
+                        _slug = new_role_title.strip().lower().replace(" ", "_").replace("/", "_")
+                        _req  = [s.strip() for s in new_req.strip().splitlines()  if s.strip()]
+                        _rec  = [s.strip() for s in new_rec.strip().splitlines()  if s.strip()]
+                        _nice = [s.strip() for s in new_nice.strip().splitlines() if s.strip()]
+                        with st.spinner("Saving role to database..."):
+                            ok, err = _get_db().save_custom_role(
+                                new_role_title.strip(), _slug, _req, _rec, _nice
+                            )
+                        if ok:
+                            st.success(
+                                f"✅ **{new_role_title.strip()}** saved! "
+                                "It is now set as your target role."
+                            )
+                            st.session_state["custom_role_saved"]       = True
+                            st.session_state["selected_role"]           = _slug
+                            st.session_state["role_creation_confirmed"] = False
+                            st.session_state["similar_roles_found"]     = []
+                        else:
+                            st.error(f"❌ Could not save role: {err}")
+                            st.caption("Common causes: missing DB permissions, "
+                                       "duplicate slug, or Supabase connection issue.")
         st.markdown("<br>", unsafe_allow_html=True)
 
         # ── Part 3: Job Description Textarea ─────────────────────────────────
