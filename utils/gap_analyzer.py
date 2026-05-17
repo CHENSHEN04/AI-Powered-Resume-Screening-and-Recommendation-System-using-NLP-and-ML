@@ -68,16 +68,29 @@ class GapAnalyzer:
         user_skills_set = {s.lower() for s in user_skills}
         
         role_data = None
-        
-        # 1. Try fetching from DB
+
+        # Try multiple slug variations to handle spacing/casing differences
+        slug_variations = list(dict.fromkeys([
+            target_role,
+            target_role.lower().replace(" ", "_").replace("/", "_").replace("-", "_"),
+            self._normalize_role_name(target_role),
+            target_role.lower().strip(),
+        ]))
+
+        # 1. Try DB with each slug variation
         if self.db_manager:
-            role_data = self.db_manager.get_market_standards(target_role)
-            
-        # 2. Fallback to Local JSON
+            for _slug in slug_variations:
+                role_data = self.db_manager.get_market_standards(_slug)
+                if role_data:
+                    break
+
+        # 2. Fallback to local JSON with each slug variation
         if not role_data:
-            role_key = self._normalize_role_name(target_role)
-            role_data = self.standards.get("job_categories", {}).get(role_key)
-        
+            for _slug in slug_variations:
+                role_data = self.standards.get("job_categories", {}).get(_slug)
+                if role_data:
+                    break
+
         if not role_data:
             return {
                 "error": "Role not found in standards",
@@ -86,7 +99,11 @@ class GapAnalyzer:
                 "missing_recommended": [],
                 "missing_nice_to_have": [],
                 "match_percentage": 0.0,
-                "recommendations": ["Could not analyze gaps for this role. Try updating your target role manually."],
+                "recommendations": [
+                    f"No skill standards found for '{target_role}'. "
+                    "If you just added this role, make sure you saved it with at least "
+                    "one Required Skill before running analysis."
+                ],
                 "learning_paths": {}
             }
             
@@ -129,29 +146,17 @@ class GapAnalyzer:
             "learning_paths": learning_paths
         }
     
-
     def get_all_known_roles(self) -> list:
-        """
-        Return a sorted list of all role titles known to the system.
-        Merges DB roles (live) with local JSON roles (fallback).
-        Used to populate the role selector dropdown on the upload page.
-
-        Returns:
-            List of (display_title, slug) tuples, sorted alphabetically.
-        """
+        """Return sorted list of all (title, slug) — merges local JSON + DB."""
         known = {}
-
-        # 1. Load from local JSON (always available)
         for slug, data in self.standards.get("job_categories", {}).items():
-            title = data.get("title", slug.replace("_", " ").title())
-            known[slug] = title
-
-        # 2. Merge DB roles (override JSON if same slug exists)
+            known[slug] = data.get("title", slug.replace("_", " ").title())
         if self.db_manager:
-            db_roles = self.db_manager.get_all_role_titles()
-            for title, slug in db_roles:
-                known[slug] = title
-
+            try:
+                for title, slug in self.db_manager.get_all_role_titles():
+                    known[slug] = title
+            except Exception:
+                pass
         return sorted([(title, slug) for slug, title in known.items()], key=lambda x: x[0])
 
     def _normalize_role_name(self, role_name: str) -> str:

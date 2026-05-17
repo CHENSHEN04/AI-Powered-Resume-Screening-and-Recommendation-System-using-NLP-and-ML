@@ -66,10 +66,6 @@ DEFAULTS = {
     "reviewed_skills": None,
     # ── NEW: JD fields ──
     "jd_text": "",                  # raw job description input
-    "selected_role": None,          # user-chosen role from dropdown
-    "custom_role_saved": False,     # whether a custom role was saved this session
-    "similar_roles_found": [],      # similar roles found during duplicate check
-    "role_creation_confirmed": False, # user confirmed they want a new role despite similar existing
     "jd_match_result": None,        # output from JDMatcher
     "weighted_score_result": None,  # output from weighted_scorer
     "ai_feedback": None,            # output from AIFeedbackGenerator
@@ -209,161 +205,21 @@ def render_upload_stage():
         )
 
     with right_col:
-        st.markdown("### 💼 Job Details")
-
-        # ── Part 1: Role Selector ─────────────────────────────────────────────
-        st.markdown("**🎯 Select the Role You Are Applying For**")
-        try:
-            from utils.gap_analyzer import GapAnalyzer
-            _db_for_roles = _get_db()
-            _analyzer_for_roles = GapAnalyzer(_db_for_roles)
-            all_roles = _analyzer_for_roles.get_all_known_roles()  # [(title, slug), ...]
-        except Exception:
-            all_roles = []
-
-        role_titles   = ["— Select a role —"] + [t for t, s in all_roles]
-        role_slugs    = [None]                 + [s for t, s in all_roles]
-        saved_role    = st.session_state.get("selected_role")
-        default_idx   = 0
-        if saved_role:
-            for i, slug in enumerate(role_slugs):
-                if slug == saved_role:
-                    default_idx = i
-                    break
-
-        chosen_idx = st.selectbox(
-            "Role",
-            range(len(role_titles)),
-            format_func=lambda i: role_titles[i],
-            index=default_idx,
-            key="role_selector_upload",
-            label_visibility="collapsed",
-        )
-        if chosen_idx > 0:
-            st.session_state["selected_role"] = role_slugs[chosen_idx]
-            st.caption(f"✅ Selected: **{role_titles[chosen_idx]}**")
-        else:
-            st.session_state["selected_role"] = None
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        # ── Part 2: Add Custom Role ───────────────────────────────────────────
-        with st.expander("➕ Add a New Role to the Database", expanded=False):
-            st.caption("Can't find your role above? Define it here and it will be saved for future screenings.")
-
-            new_role_title = st.text_input(
-                "Role Title",
-                placeholder="e.g. ML Engineer, DevOps Architect",
-                key="new_role_title"
-            )
-
-            # ── Step 1: Similarity check when title changes ───────────────────
-            if new_role_title.strip():
-                prev = st.session_state.get("_prev_role_title_check", "")
-                if new_role_title.strip().lower() != prev.lower():
-                    st.session_state["similar_roles_found"]     = []
-                    st.session_state["role_creation_confirmed"] = False
-                    st.session_state["_prev_role_title_check"]  = new_role_title.strip()
-                if not st.session_state.get("similar_roles_found") and                    not st.session_state.get("role_creation_confirmed"):
-                    _similar = _get_db().find_similar_roles(new_role_title.strip())
-                    st.session_state["similar_roles_found"] = _similar
-
-            similar   = st.session_state.get("similar_roles_found", [])
-            confirmed = st.session_state.get("role_creation_confirmed", False)
-
-            # ── Step 2: "Are you referring to…?" prompt ───────────────────────
-            if similar and not confirmed:
-                st.warning("⚠️ Similar roles already exist in the database:")
-                for s_title, s_slug in similar:
-                    ca, cb = st.columns([3, 1])
-                    with ca:
-                        st.markdown(f"&nbsp;&nbsp;• **{s_title}**", unsafe_allow_html=True)
-                    with cb:
-                        if st.button("Use this", key=f"use_existing_{s_slug}"):
-                            st.session_state["selected_role"]       = s_slug
-                            st.session_state["similar_roles_found"] = []
-                            st.session_state["role_creation_confirmed"] = False
-                            st.success(f"✅ Selected **{s_title}** as your target role.")
-                            st.rerun()
-                st.markdown("---")
-                cy, cn = st.columns(2)
-                with cy:
-                    if st.button("➕ No, create a new role anyway",
-                                 use_container_width=True, key="confirm_new_role"):
-                        st.session_state["role_creation_confirmed"] = True
-                        st.session_state["similar_roles_found"]     = []
-                        st.rerun()
-                with cn:
-                    if st.button("✖ Cancel", use_container_width=True, key="cancel_new_role"):
-                        st.session_state["similar_roles_found"]     = []
-                        st.session_state["role_creation_confirmed"] = False
-                        st.rerun()
-
-            # ── Step 3: Skill fields — shown only when no blocking prompt ─────
-            elif not similar or confirmed:
-                c1, c2 = st.columns(2)
-                with c1:
-                    new_req = st.text_area(
-                        "Required Skills (one per line)",
-                        placeholder="Python\nDocker\nKubernetes",
-                        height=100, key="new_role_required"
-                    )
-                with c2:
-                    new_rec = st.text_area(
-                        "Recommended Skills (one per line)",
-                        placeholder="Terraform\nAnsible\nCI/CD",
-                        height=100, key="new_role_recommended"
-                    )
-                new_nice = st.text_area(
-                    "Bonus / Nice-to-Have Skills (one per line)",
-                    placeholder="Go\nRust\nDatadog",
-                    height=70, key="new_role_nice"
-                )
-                if st.button("💾 Save Role to Database",
-                             use_container_width=True, key="save_role_btn"):
-                    if not new_role_title.strip():
-                        st.warning("Please enter a role title.")
-                    else:
-                        _slug = new_role_title.strip().lower().replace(" ", "_").replace("/", "_")
-                        _req  = [s.strip() for s in new_req.strip().splitlines()  if s.strip()]
-                        _rec  = [s.strip() for s in new_rec.strip().splitlines()  if s.strip()]
-                        _nice = [s.strip() for s in new_nice.strip().splitlines() if s.strip()]
-                        with st.spinner("Saving role to database..."):
-                            ok, err = _get_db().save_custom_role(
-                                new_role_title.strip(), _slug, _req, _rec, _nice
-                            )
-                        if ok:
-                            st.success(
-                                f"✅ **{new_role_title.strip()}** saved! "
-                                "It is now set as your target role."
-                            )
-                            st.session_state["custom_role_saved"]       = True
-                            st.session_state["selected_role"]           = _slug
-                            st.session_state["role_creation_confirmed"] = False
-                            st.session_state["similar_roles_found"]     = []
-                        else:
-                            st.error(f"❌ Could not save role: {err}")
-                            st.caption("Common causes: missing DB permissions, "
-                                       "duplicate slug, or Supabase connection issue.")
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        # ── Part 3: Job Description Textarea ─────────────────────────────────
-        st.markdown("**📋 Paste Job Description** *(optional but recommended)*")
+        st.markdown("### 💼 Paste Job Description")
         jd_text = st.text_area(
-            "JD",
+            "Paste the full job description here",
             value=st.session_state.get("jd_text", ""),
-            height=160,
+            height=220,
             placeholder="e.g. We are looking for a Python Developer with 3+ years experience in Django, REST APIs, PostgreSQL...",
             help="The more complete the JD, the more accurate the match score.",
-            key="jd_input",
-            label_visibility="collapsed",
+            key="jd_input"
         )
         if jd_text:
             word_count = len(jd_text.split())
             if word_count < 50:
-                st.warning(f"⚠️ JD is short ({word_count} words). A longer description improves accuracy.")
+                st.warning(f"⚠️ JD is short ({word_count} words). A longer description gives more accurate results.")
             else:
-                st.caption(f"✅ {word_count} words — good length.")
+                st.caption(f"✅ {word_count} words — good length for analysis.")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -445,20 +301,11 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = ""):
     st.session_state["explanation"] = classifier.explain_prediction(resume_text)
 
     # 4. Determine target role
-    # Priority: (1) user-selected role > (2) SVM prediction > (3) skill-based fallback
-    user_selected_role = st.session_state.get("selected_role")
     role_cats = extractor.map_to_category(skill_data["all_skills"])
     top_skill_cat = list(role_cats.keys())[0] if role_cats else "Unknown"
-    svm_role = prediction["top_category"]
-
-    if user_selected_role:
-        # User explicitly picked a role — always honour it
-        target_role = user_selected_role
-    elif svm_role and svm_role != "Unknown" and not str(svm_role).isdigit():
-        target_role = svm_role
-    else:
+    target_role = prediction["top_category"]
+    if target_role == "Unknown" or str(target_role).isdigit():
         target_role = top_skill_cat
-
     st.session_state["target_role"] = target_role
 
     # 5. JD-specific BERT matching (NEW)
@@ -596,7 +443,7 @@ def render_teaser_stage():
     </div>
     """, unsafe_allow_html=True)
 
-    # Section scores breakdown (only when JD was provided)
+    # Section scores + score calculation breakdown
     if score_result and st.session_state.get("jd_match_result"):
         section_scores = st.session_state["jd_match_result"].get("section_scores", {})
         if section_scores:
@@ -605,6 +452,32 @@ def render_teaser_stage():
             for col, (sec, val) in zip([s1, s2, s3, s4], section_scores.items()):
                 with col:
                     st.metric(sec.title(), f"{val:.0f}%")
+
+    if score_result:
+        with st.expander("🔢 How was this score calculated?", expanded=False):
+            comps = score_result.get("component_scores", {})
+            st.markdown("""
+| Component | Weight | Your Score | Contribution |
+|-----------|--------|-----------|--------------|
+| BERT Semantic Similarity | 50% | {bert:.1f}% | {bert_c:.1f}% |
+| Skill Keyword Overlap | 30% | {skill:.1f}% | {skill_c:.1f}% |
+| SVM Role Confidence | 10% | {svm:.1f}% | {svm_c:.1f}% |
+| Education Match | 10% | {edu:.1f}% | {edu_c:.1f}% |
+| **Total** | **100%** | | **{total:.1f}%** |
+
+**Thresholds:** 🟢 Strong ≥ 80% &nbsp;|&nbsp; 🟡 Moderate ≥ 55% &nbsp;|&nbsp; 🔴 Weak < 55%
+            """.format(
+                bert   = comps.get("bert_semantic",   0) / 0.5,
+                bert_c = comps.get("bert_semantic",   0),
+                skill  = comps.get("skill_overlap",   0) / 0.3,
+                skill_c= comps.get("skill_overlap",   0),
+                svm    = comps.get("svm_confidence",  0) / 0.1,
+                svm_c  = comps.get("svm_confidence",  0),
+                edu    = comps.get("education_match", 0) / 0.1,
+                edu_c  = comps.get("education_match", 0),
+                total  = score_result.get("final_score", 0),
+            ))
+            st.caption("SVM confidence is 0% on first run while the BERT model warms up. Re-run the analysis to get the full score.")
 
     # Quick Stats
     st.markdown("<br>", unsafe_allow_html=True)
@@ -1001,11 +874,18 @@ def render_dashboard_stage():
     with tab_feedback:
         st.markdown("### 🤖 AI Recruiter Feedback")
         if ai_feedback:
-            source = ai_feedback.get("_source", "unknown")
-            if source == "claude_api":
-                st.success("✅ Powered by Claude AI")
+            source = ai_feedback.get("_source", "rule_based")
+            _provider_labels = {
+                "claude":     ("✅", "Powered by Anthropic Claude"),
+                "claude_api": ("✅", "Powered by Anthropic Claude"),
+                "gemini":     ("✅", "Powered by Google Gemini"),
+                "rule_based": ("ℹ️", "Rule-based feedback — add GEMINI_API_KEY or ANTHROPIC_API_KEY to .streamlit/secrets.toml for AI-powered feedback"),
+            }
+            _icon, _label = _provider_labels.get(source, ("ℹ️", f"Provider: {source}"))
+            if source == "rule_based":
+                st.info(f"{_icon} {_label}")
             else:
-                st.info("ℹ️ Rule-based feedback (Claude API not configured)")
+                st.success(f"{_icon} {_label}")
 
             # Experience gap
             if ai_feedback.get("experience_gap"):

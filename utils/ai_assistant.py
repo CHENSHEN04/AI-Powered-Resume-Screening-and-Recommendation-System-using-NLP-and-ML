@@ -1,228 +1,160 @@
 """
-AI Assistant Module
-===================
-Integrates the Resume AI Assistant with Stitch MCP Memory.
-Uses distilgpt2 as a lightweight model for career coaching.
-Falls back to rule-based responses if model loading fails.
-"""
+AI Feedback & Chat Assistant
+Priority: 1) Anthropic Claude  2) Google Gemini (free)  3) Rule-based
 
-import json
-import logging
-import os
+Setup in .streamlit/secrets.toml:
+  GEMINI_API_KEY = "your-key"          # free at aistudio.google.com/app/apikey
+  ANTHROPIC_API_KEY = "your-key"       # optional, higher quality
+
+Install: pip install google-generativeai
+"""
+import json, logging, os
 import streamlit as st
 from typing import Dict, List, Generator
-
 logger = logging.getLogger(__name__)
 
-# ── Structured recruiter-feedback prompt ──────────────────────────────────────
-_FEEDBACK_PROMPT = """You are an expert technical recruiter. Given the following job description and candidate resume, provide structured feedback in JSON format with these exact keys:
-- "overall_verdict": one of ["Strong Match", "Moderate Match", "Weak Match"]
+_FEEDBACK_PROMPT = """You are an expert technical recruiter. Given the job description and resume below, return ONLY a JSON object with these exact keys:
+- "overall_verdict": one of ["Strong Match","Moderate Match","Weak Match"]
 - "match_percentage": integer 0-100
-- "matched_skills": list of skills found in both JD and resume
-- "missing_skills": list of skills required in JD but absent in resume
-- "extra_skills": list of notable skills in resume not mentioned in JD
-- "experience_gap": string describing any experience level mismatch
+- "matched_skills": list of skills in both JD and resume
+- "missing_skills": list of skills in JD but not in resume
+- "extra_skills": list of notable resume skills not in JD
+- "experience_gap": string describing experience level mismatch
 - "recommendation": 2-3 sentence hiring recommendation
-- "improvement_suggestions": list of 3-5 actionable suggestions for the candidate
+- "improvement_suggestions": list of 3-5 actionable suggestions
 
-Job Description:
-{jd_text}
+Job Description: {jd_text}
+Resume: {resume_text}
+Section scores: {section_scores}
 
-Resume:
-{resume_text}
+Return ONLY valid JSON."""
 
-Section similarity scores (for context):
-{section_scores}
+_COACH_SYSTEM = """You are a sharp AI career coach. Candidate profile:
+Role: {target_role} | Score: {match_score}% | Verdict: {verdict}
+Skills: {skills_found}
+Missing: {missing_skills}
+Give SPECIFIC advice referencing their actual skills/gaps. Under 200 words."""
 
-Return ONLY valid JSON. No explanation outside the JSON block."""
+def _secret(key):
+    v = os.environ.get(key)
+    if not v:
+        try: v = st.secrets.get(key)
+        except: pass
+    return v
 
-# ── Career coach system prompt (context-aware) ────────────────────────────────
-_COACH_SYSTEM = """You are a sharp, empathetic AI career coach with deep knowledge of tech hiring.
-You have access to this candidate's profile:
+def _active_provider():
+    if _secret("ANTHROPIC_API_KEY"): return "claude"
+    if _secret("GEMINI_API_KEY"):    return "gemini"
+    return "rule_based"
 
-Target Role   : {target_role}
-Match Score   : {match_score}%
-Skills Found  : {skills_found}
-Missing Skills: {missing_skills}
-Verdict       : {verdict}
-
-Give concise, SPECIFIC advice that references the candidate's actual skills and gaps above.
-Do NOT give generic advice — always tie your answer back to their profile.
-Keep answers under 200 words. Use bullet points for lists."""
-
-
-def _get_api_key() -> str | None:
-    key = os.environ.get("ANTHROPIC_API_KEY")
-    if not key:
-        try:
-            key = st.secrets.get("ANTHROPIC_API_KEY")
-        except Exception:
-            pass
-    return key
-
-
-def _build_client():
-    """Return an Anthropic client or None."""
+# ── Gemini ────────────────────────────────────────────────────────────────────
+def _call_gemini(prompt, system="", max_tokens=1024):
     try:
-        import anthropic
-        api_key = _get_api_key()
-        if not api_key:
-            return None
-        return anthropic.Anthropic(api_key=api_key)
+        import google.generativeai as genai
+        key = _secret("GEMINI_API_KEY")
+        if not key: return None
+        genai.configure(api_key=key)
+        m = genai.GenerativeModel("gemini-1.5-flash",
+                system_instruction=system or None)
+        r = m.generate_content(prompt,
+                generation_config={"max_output_tokens": max_tokens, "temperature": 0.7})
+        return r.text
     except Exception as e:
-        logger.warning(f"Could not build Anthropic client: {e}")
-        return None
+        logger.warning(f"Gemini failed: {e}"); return None
 
+def _stream_gemini(prompt, system=""):
+    try:
+        import google.generativeai as genai
+        key = _secret("GEMINI_API_KEY")
+        if not key: return
+        genai.configure(api_key=key)
+        m = genai.GenerativeModel("gemini-1.5-flash", system_instruction=system or None)
+        for chunk in m.generate_content(prompt, stream=True):
+            if chunk.text: yield chunk.text
+    except Exception as e:
+        logger.warning(f"Gemini stream failed: {e}")
+
+def _call_ai(prompt, system="", max_tokens=1024):
+    return _call_gemini(prompt, system, max_tokens)
+
+def _stream_ai(prompt, system=""):
+    if _secret("GEMINI_API_KEY"):
+        yield from _stream_gemini(prompt, system)
 
 # ── Rule-based fallback ───────────────────────────────────────────────────────
 class _RuleBasedFeedback:
-    def generate(self, matched_skills, missing_skills, final_score, verdict) -> Dict:
-        suggestions = []
-        if missing_skills:
-            suggestions.append(
-                f"Add proficiency in {', '.join(missing_skills[:3])} — these are explicitly required in the JD."
-            )
-        suggestions += [
-            "Quantify your achievements with numbers and measurable outcomes.",
-            "Tailor your resume summary to mirror keywords in the job description.",
-            "Add relevant certifications for any missing required skills.",
-            "Build a portfolio project that demonstrates the required tech stack.",
-        ]
-        return {
-            "overall_verdict": verdict,
-            "match_percentage": int(final_score),
-            "matched_skills": matched_skills,
-            "missing_skills": missing_skills,
-            "extra_skills": [],
-            "experience_gap": "Unable to determine without AI analysis.",
-            "recommendation": (
-                f"Candidate shows a {verdict.lower()} with a score of {final_score:.0f}%. "
-                "Review skill gaps before proceeding to the interview stage."
-            ),
-            "improvement_suggestions": suggestions[:5],
-            "_source": "rule_based",
-        }
-
+    def generate(self, matched, missing, score, verdict):
+        tips = []
+        if missing:
+            tips.append(f"Add proficiency in {', '.join(missing[:3])} — required in the JD.")
+        tips += ["Quantify achievements with numbers.",
+                 "Mirror keywords from the job description in your summary.",
+                 "Add certifications for missing required skills.",
+                 "Build a portfolio project showing the required tech stack."]
+        return {"overall_verdict": verdict, "match_percentage": int(score),
+                "matched_skills": matched, "missing_skills": missing, "extra_skills": [],
+                "experience_gap": "Unable to determine without AI analysis.",
+                "recommendation": f"Candidate shows a {verdict.lower()} ({score:.0f}%). Review gaps before interview.",
+                "improvement_suggestions": tips[:5], "_source": "rule_based"}
 
 # ── Feedback Generator ────────────────────────────────────────────────────────
 class AIFeedbackGenerator:
-    def __init__(self):
-        self._fallback = _RuleBasedFeedback()
+    def __init__(self): self._fb = _RuleBasedFeedback()
 
-    def generate(self, jd_text, resume_text, section_scores, matched_skills,
-                 missing_skills, final_score, verdict) -> Dict:
+    def generate(self, jd_text, resume_text, section_scores,
+                 matched_skills, missing_skills, final_score, verdict) -> Dict:
         scores_str = "\n".join(f"  {k}: {v:.1f}%" for k, v in section_scores.items())
-        prompt = _FEEDBACK_PROMPT.format(
-            jd_text=jd_text[:3000],
-            resume_text=resume_text[:3000],
-            section_scores=scores_str,
-        )
-        client = _build_client()
-        if client:
+        prompt = _FEEDBACK_PROMPT.format(jd_text=jd_text[:3000],
+            resume_text=resume_text[:3000], section_scores=scores_str)
+        raw = _call_ai(prompt, max_tokens=1024)
+        if raw:
             try:
-                msg = client.messages.create(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=1024,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-                raw = msg.content[0].text
                 clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
                 parsed = json.loads(clean)
-                parsed["_source"] = "claude_api"
+                parsed["_source"] = _active_provider()
                 return parsed
             except Exception as e:
-                logger.warning(f"AIFeedbackGenerator failed: {e}")
-        return self._fallback.generate(matched_skills, missing_skills, final_score, verdict)
+                logger.warning(f"AI JSON parse failed: {e}")
+        return self._fb.generate(matched_skills, missing_skills, final_score, verdict)
 
-
-# ── Career Chat Assistant (with streaming) ────────────────────────────────────
+# ── Career Chat Assistant ─────────────────────────────────────────────────────
 class AIAssistant:
-    """
-    Context-aware career coaching chat assistant.
-
-    Usage in app.py (streaming — Bug 3 fix):
-        with st.chat_message("assistant"):
-            response = st.write_stream(agent.generate_stream(prompt))
-        st.session_state["chat_history"].append({"role": "assistant", "content": response})
-
-    Usage (non-streaming fallback):
-        response = agent.generate_response(prompt)
-    """
-
     _RULES = {
-        "skill":     "Focus on building the skills listed in your Skill Gaps tab — start with Required, then Recommended.",
-        "interview": "Prepare STAR-format examples for each required skill. Research the company and practise coding problems.",
-        "resume":    "Use action verbs, quantify achievements, keep it to 1-2 pages, and mirror keywords from the job description.",
-        "career":    "Build a GitHub portfolio, network on LinkedIn, and pursue certifications in your gap areas.",
-        "salary":    "Check Glassdoor, Levels.fyi, and Payscale for your target role and location.",
-        "learn":     "Start with free resources (YouTube, freeCodeCamp), build small projects, then get certified on Coursera.",
-        "gap":       "Focus on one Missing Required skill at a time. Dedicate 1-2 hours daily and build a mini-project for each.",
-        "default":   "I can help with skill development, interview prep, resume tips, career guidance, and salary insights.",
+        "skill":     "Focus on Required skills in your Skill Gaps tab first, then Recommended.",
+        "interview": "Prepare STAR-format examples for each required skill. Research the company.",
+        "resume":    "Use action verbs, quantify achievements, mirror JD keywords.",
+        "career":    "Build a GitHub portfolio, network on LinkedIn, pursue certifications in gap areas.",
+        "salary":    "Check Glassdoor, Levels.fyi, and Payscale for your role and location.",
+        "learn":     "Start with free resources (YouTube, freeCodeCamp), build projects, then certify.",
+        "gap":       "Pick one Missing Required skill, dedicate 1-2 hours daily, build a mini-project.",
+        "default":   "I can help with skill development, interview prep, resume tips, and career guidance.",
     }
 
     def __init__(self, context: Dict = None):
-        """
-        Args:
-            context: Dict with candidate profile keys:
-                     target_role, match_score, skills_found, missing_skills, verdict
-        """
         self.context = context or {}
 
-    def _build_system(self) -> str:
-        """Build a context-enriched system prompt from the candidate's profile."""
+    def _sys(self):
         return _COACH_SYSTEM.format(
-            target_role  =self.context.get("target_role",   "Unknown"),
-            match_score  =self.context.get("match_score",   "N/A"),
-            skills_found =", ".join(self.context.get("skills_found",   [])[:15]) or "Not analysed yet",
-            missing_skills=", ".join(self.context.get("missing_skills", [])[:10]) or "None",
-            verdict      =self.context.get("verdict",       "Not analysed yet"),
+            target_role   = self.context.get("target_role",   "Unknown"),
+            match_score   = self.context.get("match_score",   "N/A"),
+            skills_found  = ", ".join(self.context.get("skills_found",   [])[:15]) or "Not analysed",
+            missing_skills= ", ".join(self.context.get("missing_skills", [])[:10]) or "None",
+            verdict       = self.context.get("verdict",       "Not analysed"),
         )
 
-    def generate_stream(self, user_query: str) -> Generator[str, None, None]:
-        """
-        Stream tokens from Claude in real time.
-        Designed for use with st.write_stream().
+    def generate_stream(self, query: str) -> Generator[str, None, None]:
+        yielded = False
+        for chunk in _stream_ai(query, self._sys()):
+            yield chunk; yielded = True
+        if not yielded:
+            yield self._rule(query)
 
-        Yields:
-            str chunks as they arrive from the API.
-        Falls back to yielding the rule-based response in one chunk.
-        """
-        client = _build_client()
-        if client:
-            try:
-                with client.messages.stream(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=400,
-                    system=self._build_system(),
-                    messages=[{"role": "user", "content": user_query}],
-                ) as stream:
-                    for text in stream.text_stream:
-                        yield text
-                return
-            except Exception as e:
-                logger.warning(f"Streaming failed: {e}")
-        # Fallback — yield rule-based answer as a single chunk
-        yield self._rule_based(user_query)
+    def generate_response(self, query: str, user_id: str = "") -> str:
+        raw = _call_ai(query, self._sys(), 400)
+        return raw.strip() if raw else self._rule(query)
 
-    def generate_response(self, user_query: str, user_id: str = "") -> str:
-        """Non-streaming response (kept for backward compatibility)."""
-        client = _build_client()
-        if client:
-            try:
-                msg = client.messages.create(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=400,
-                    system=self._build_system(),
-                    messages=[{"role": "user", "content": user_query}],
-                )
-                return msg.content[0].text.strip()
-            except Exception as e:
-                logger.warning(f"generate_response failed: {e}")
-        return self._rule_based(user_query)
-
-    def _rule_based(self, query: str) -> str:
-        q = query.lower()
-        for kw, resp in self._RULES.items():
-            if kw in q:
-                return resp
+    def _rule(self, q):
+        q = q.lower()
+        for kw, r in self._RULES.items():
+            if kw in q: return r
         return self._RULES["default"]

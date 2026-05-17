@@ -36,11 +36,9 @@ class JobClassifier:
     def __init__(self):
         """Initialize classifier by loading models."""
         self.clf, self.tfidf, self.encoder = self._load_models()
-        self.jd_matcher = JDMatcher()
-        # FIX Bug 1: semantic_matcher was referenced in predict() but never assigned,
-        # causing hybrid scoring to silently skip — SVM always returned index-0 ("accountant").
         from utils.semantic_matcher import SemanticMatcher
         self.semantic_matcher = SemanticMatcher()
+        self.jd_matcher = JDMatcher()
         
     @staticmethod
     @st.cache_resource

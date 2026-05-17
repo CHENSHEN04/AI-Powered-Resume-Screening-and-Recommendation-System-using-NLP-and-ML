@@ -24,8 +24,8 @@ WEIGHT_SVM       = 0.10
 WEIGHT_EDUCATION = 0.10
 
 # --- Verdict thresholds ---
-STRONG_THRESHOLD   = 85
-MODERATE_THRESHOLD = 65
+STRONG_THRESHOLD   = 80
+MODERATE_THRESHOLD = 55
 
 # Education degree hierarchy for comparison
 DEGREE_RANK = {
