@@ -16,9 +16,10 @@ class TestJobClassifier:
     
     @pytest.fixture
     def mock_models(self):
-        """Mock the clf and tfidf models."""
+        """Mock the clf, tfidf, and encoder models."""
         mock_clf = MagicMock()
         mock_tfidf = MagicMock()
+        mock_encoder = None
         
         # Setup mock behavior
         mock_tfidf.transform.return_value = [[0.1, 0.2]]
@@ -26,7 +27,7 @@ class TestJobClassifier:
         mock_clf.predict_proba.return_value = [[0.1, 0.8, 0.1]]
         mock_clf.classes_ = ["Frontend", "Data Scientist", "Backend"]
         
-        return mock_clf, mock_tfidf
+        return mock_clf, mock_tfidf, mock_encoder
 
     @patch('utils.classifier.joblib.load')
     @patch('pathlib.Path.exists')
@@ -53,11 +54,12 @@ class TestJobClassifier:
 
     def test_predict_success(self, mock_models):
         """Test prediction flow using mocked _load_models."""
-        mock_clf, mock_tfidf = mock_models
+        mock_clf, mock_tfidf, mock_encoder = mock_models
         
         # We patch _load_models on the class to return our mocks
-        with patch.object(JobClassifier, '_load_models', return_value=(mock_clf, mock_tfidf)):
+        with patch.object(JobClassifier, '_load_models', return_value=(mock_clf, mock_tfidf, mock_encoder)):
             classifier = JobClassifier()
+            classifier.semantic_matcher = None # Disable semantic matcher for pure SVM unit testing
             result = classifier.predict("Experienced Data Scientist with Python skills")
             
             assert result["top_category"] == "Data Scientist"
@@ -68,19 +70,21 @@ class TestJobClassifier:
 
     def test_predict_empty_text(self):
         """Test prediction with empty text."""
-        with patch.object(JobClassifier, '_load_models', return_value=(None, None)):
+        with patch.object(JobClassifier, '_load_models', return_value=(None, None, None)):
             classifier = JobClassifier()
+            classifier.semantic_matcher = None
             result = classifier.predict("")
             assert result["top_category"] == "Unknown"
             assert result["confidence"] == 0.0
 
     def test_predict_no_proba(self, mock_models):
         """Test prediction when model doesn't support probabilities."""
-        mock_clf, mock_tfidf = mock_models
+        mock_clf, mock_tfidf, mock_encoder = mock_models
         del mock_clf.predict_proba
         
-        with patch.object(JobClassifier, '_load_models', return_value=(mock_clf, mock_tfidf)):
+        with patch.object(JobClassifier, '_load_models', return_value=(mock_clf, mock_tfidf, mock_encoder)):
             classifier = JobClassifier()
+            classifier.semantic_matcher = None # Disable semantic matcher
             result = classifier.predict("text")
             
             assert result["top_category"] == "Data Scientist"

@@ -23,10 +23,11 @@ from utils.ui_components import show_error, show_warning
 from utils.db_handler import DatabaseManager
 from utils.rate_limiter import RateLimiter, show_rate_limit_info
 try:
-    from utils.ai_assistant import AIAssistant, AIFeedbackGenerator
+    from utils.ai_assistant import AIAssistant, AIFeedbackGenerator, AIRoleStandardGenerator
 except ImportError:
     AIAssistant = None
     AIFeedbackGenerator = None
+    AIRoleStandardGenerator = None
 
 
 # ==============================================================================
@@ -77,10 +78,39 @@ for k, v in DEFAULTS.items():
 # ==============================================================================
 # Sidebar – Auth + Navigation
 # ==============================================================================
-@st.cache_resource
 def _get_db():
-    """Cached DB client — only initialised once per server process."""
-    return DatabaseManager()
+    """Get DB client scoped to the current user session."""
+    if "db_client" not in st.session_state:
+        st.session_state["db_client"] = DatabaseManager()
+    return st.session_state["db_client"]
+
+
+def _sync_session_analysis_to_db(db, user_id):
+    """Automatically persist a completed guest/session resume analysis to the database upon user login/signup."""
+    if (st.session_state.get("gap_analysis") and 
+        st.session_state.get("parse_result") and 
+        st.session_state.get("uploaded_file_name")):
+        
+        filename = st.session_state["uploaded_file_name"]
+        parse_result = st.session_state["parse_result"]
+        target_role = st.session_state.get("target_role", "Unknown")
+        analysis = st.session_state["gap_analysis"]
+        skill_data = st.session_state["skill_data"]
+        
+        # Save to database
+        db.save_resume_analysis(user_id, {
+            "filename": filename,
+            "storage_path": f"resumes/{user_id}/{filename}",
+            "parsed_text": parse_result.text,
+            "page_count": parse_result.page_count,
+            "confidence_score": parse_result.confidence,
+            "predicted_role": target_role,
+            "match_score": analysis["match_percentage"],
+            "skills": [{"name": s, "category": "extracted"} for s in skill_data["all_skills"]]
+        })
+        st.toast("💾 Guest resume analysis successfully saved to your account!", icon="📥")
+
+
 
 
 def render_sidebar():
@@ -129,6 +159,7 @@ def render_sidebar():
                         else:
                             st.session_state["user"] = res.user
                             st.session_state["is_anonymous"] = False
+                            _sync_session_analysis_to_db(db, res.user.id)
                             if st.session_state.get("gap_analysis"):
                                 st.session_state["app_stage"] = "dashboard"
                             st.rerun()
@@ -256,7 +287,153 @@ def render_upload_stage():
             st.session_state["jd_text"] = jd_text.strip()
             st.session_state["file_bytes"] = file_bytes
             st.session_state["uploaded_file_name"] = uploaded_file.name
-            _run_analysis_pipeline(file_bytes, uploaded_file.name, jd_text.strip())
+            show_role_selector_dialog(file_bytes, uploaded_file.name, jd_text.strip())
+
+
+@st.dialog("🎯 Select Targeted Job Role", width="large")
+def show_role_selector_dialog(file_bytes, filename, jd_text):
+    db = _get_db()
+    
+    st.write("To customize your career match analysis, select the job role you are targeting:")
+    
+    # Get standard roles from GapAnalyzer
+    from utils.gap_analyzer import GapAnalyzer
+    analyzer = GapAnalyzer(db)
+    known_roles = analyzer.get_all_known_roles() # list of (title, slug)
+    
+    role_titles = [r[0] for r in known_roles]
+    role_slugs = [r[1] for r in known_roles]
+    
+    # Add custom option
+    options = role_titles + ["➕ Custom / Add new role..."]
+    
+    selected_option = st.selectbox("Select target role:", options, index=0)
+    
+    if selected_option == "➕ Custom / Add new role...":
+        # Render custom role fields
+        custom_role = st.text_input("Enter custom job role title (e.g. Cloud Security Specialist):", placeholder="e.g. Cloud Security Specialist")
+        
+        # State variables for similarity confirmation flow
+        if "sim_checked" not in st.session_state:
+            st.session_state["sim_checked"] = False
+        if "similar_role_found" not in st.session_state:
+            st.session_state["similar_role_found"] = None
+        if "similar_role_slug" not in st.session_state:
+            st.session_state["similar_role_slug"] = None
+            
+        if custom_role:
+            cleaned_role = custom_role.strip()
+            # If they changed the text, reset the checked state
+            if st.session_state.get("last_checked_role") != cleaned_role:
+                st.session_state["sim_checked"] = False
+                st.session_state["last_checked_role"] = cleaned_role
+                
+            if not st.session_state["sim_checked"]:
+                # Check semantic similarity using find_best_match
+                from utils.semantic_matcher import SemanticMatcher
+                matcher = SemanticMatcher()
+                candidates = {slug: title for title, slug in known_roles}
+                best_slug, score = matcher.find_best_match(cleaned_role, candidates)
+                
+                if best_slug and score > 0.65:
+                    st.session_state["similar_role_found"] = candidates[best_slug]
+                    st.session_state["similar_role_slug"] = best_slug
+                else:
+                    st.session_state["similar_role_found"] = None
+                    st.session_state["similar_role_slug"] = None
+                st.session_state["sim_checked"] = True
+            
+            # If a similar role is found, prompt the user
+            if st.session_state["similar_role_found"]:
+                st.warning(f"🔍 We found a very similar role: **{st.session_state['similar_role_found']}** in our database.")
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button(f"Yes, use {st.session_state['similar_role_found']}", type="primary", use_container_width=True):
+                        st.session_state["target_role"] = st.session_state["similar_role_slug"]
+                        # Clear similarity states
+                        st.session_state["sim_checked"] = False
+                        st.session_state["similar_role_found"] = None
+                        st.session_state["similar_role_slug"] = None
+                        # Run pipeline
+                        st.dialog_close()
+                        _run_analysis_pipeline(file_bytes, filename, jd_text)
+                with c2:
+                    if st.button("No, this is a distinct new role", use_container_width=True):
+                        # Proceed with AI generation
+                        with st.spinner(f"🤖 Searching responsibilities for '{cleaned_role}' using AI..."):
+                            from utils.ai_assistant import AIRoleStandardGenerator
+                            gen = AIRoleStandardGenerator()
+                            standards = gen.generate_standards(cleaned_role)
+                            
+                            new_slug = cleaned_role.lower().replace(" ", "_").replace("/", "_")
+                            
+                            # Save custom role
+                            success, err = db.save_custom_role(
+                                role_title=cleaned_role,
+                                role_slug=new_slug,
+                                required_skills=standards.get("required_skills", []),
+                                recommended_skills=standards.get("recommended_skills", []),
+                                nice_to_have_skills=standards.get("nice_to_have_skills", [])
+                            )
+                            
+                            # Fallback if DB save fails
+                            if not success:
+                                st.session_state[f"custom_standards_{new_slug}"] = standards
+                            
+                            st.session_state["target_role"] = new_slug
+                            # Clear states
+                            st.session_state["sim_checked"] = False
+                            st.session_state["similar_role_found"] = None
+                            st.session_state["similar_role_slug"] = None
+                            # Run pipeline
+                            st.dialog_close()
+                            _run_analysis_pipeline(file_bytes, filename, jd_text)
+            else:
+                # No similar role found - proceed directly to AI generation
+                if st.button("🚀 Analyze with Custom Role", type="primary", use_container_width=True):
+                    with st.spinner(f"🤖 Searching responsibilities for '{cleaned_role}' using AI..."):
+                        from utils.ai_assistant import AIRoleStandardGenerator
+                        gen = AIRoleStandardGenerator()
+                        standards = gen.generate_standards(cleaned_role)
+                        
+                        new_slug = cleaned_role.lower().replace(" ", "_").replace("/", "_")
+                        
+                        # Save custom role
+                        success, err = db.save_custom_role(
+                            role_title=cleaned_role,
+                            role_slug=new_slug,
+                            required_skills=standards.get("required_skills", []),
+                            recommended_skills=standards.get("recommended_skills", []),
+                            nice_to_have_skills=standards.get("nice_to_have_skills", [])
+                        )
+                        
+                        # Fallback if DB save fails
+                        if not success:
+                            st.session_state[f"custom_standards_{new_slug}"] = standards
+                        
+                        st.session_state["target_role"] = new_slug
+                        # Clear states
+                        st.session_state["sim_checked"] = False
+                        st.session_state["similar_role_found"] = None
+                        st.session_state["similar_role_slug"] = None
+                        # Run pipeline
+                        st.dialog_close()
+                        _run_analysis_pipeline(file_bytes, filename, jd_text)
+                        
+    else:
+        # Clear similarity states just in case they switched back
+        st.session_state["sim_checked"] = False
+        st.session_state["similar_role_found"] = None
+        st.session_state["similar_role_slug"] = None
+        
+        # User selected a standard role
+        role_idx = role_titles.index(selected_option)
+        chosen_slug = role_slugs[role_idx]
+        
+        if st.button("🚀 Start AI Analysis", type="primary", use_container_width=True):
+            st.session_state["target_role"] = chosen_slug
+            st.dialog_close()
+            _run_analysis_pipeline(file_bytes, filename, jd_text)
 
 
 def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = ""):
@@ -301,12 +478,14 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = ""):
     st.session_state["explanation"] = classifier.explain_prediction(resume_text)
 
     # 4. Determine target role
-    role_cats = extractor.map_to_category(skill_data["all_skills"])
-    top_skill_cat = list(role_cats.keys())[0] if role_cats else "Unknown"
-    target_role = prediction["top_category"]
-    if target_role == "Unknown" or str(target_role).isdigit():
-        target_role = top_skill_cat
-    st.session_state["target_role"] = target_role
+    target_role = st.session_state.get("target_role")
+    if not target_role:
+        role_cats = extractor.map_to_category(skill_data["all_skills"])
+        top_skill_cat = list(role_cats.keys())[0] if role_cats else "Unknown"
+        target_role = prediction["top_category"]
+        if target_role == "Unknown" or str(target_role).isdigit():
+            target_role = top_skill_cat
+        st.session_state["target_role"] = target_role
 
     # 5. JD-specific BERT matching (NEW)
     jd_match_result = None
@@ -390,12 +569,13 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = ""):
     progress.progress(93, text="📈 Calculating growth...")
     from utils.growth_tracker import GrowthTracker
     user = st.session_state.get("user")
-    previous = db.get_previous_version(user.id, filename) if user else None
+    is_auth = bool(user and not st.session_state.get("is_anonymous"))
+    previous = db.get_previous_version(user.id, filename) if is_auth else None
     growth = GrowthTracker.calculate_growth(analysis, skill_data["all_skills"], previous)
     st.session_state["growth_data"] = growth
 
     # 10. Save (authenticated users)
-    if user:
+    if is_auth:
         db.save_resume_analysis(user.id, {
             "filename": filename,
             "storage_path": f"resumes/{user.id}/{filename}",
@@ -983,10 +1163,92 @@ def render_dashboard_stage():
 
 
 # ==============================================================================
+# Welcome Screen Component (Main Landing Page)
+# ==============================================================================
+def render_welcome_stage():
+    """Glow-effect welcome page with integrated sign-in/up/guest onboarding."""
+    st.markdown("""
+    <div class="hero-container animate-in" style="text-align: center; padding: 2rem 1rem;">
+        <h1 style="font-size: 2.8rem; margin-bottom: 0.5rem; background: linear-gradient(135deg, #6C63FF, #43E97B); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">🎯 Deep Career Coach</h1>
+        <p class="hero-subtitle" style="font-size: 1.15rem; max-width: 750px; margin: 0 auto 1.5rem auto; color: #A1A1AA; line-height: 1.6;">
+            Get an instant AI-powered match score, deep skill gap analysis, 
+            personalized learning roadmaps, and chat with your smart career coach.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("""
+        <div class="glass-panel animate-in animate-in-delay-1" style="padding: 1.5rem; border-radius: 16px; border: 1px solid rgba(255,255,255,0.08); background: rgba(17,17,21,0.6); margin-bottom: 1.5rem;">
+            <h3 style="text-align: center; margin-top: 0; color: #FAFAFA; font-size: 1.3rem;">🚀 Get Started</h3>
+            <p style="text-align: center; color: #71717A; font-size: 0.9rem; margin-bottom: 0;">Please sign in or continue as guest to begin your resume analysis.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        tabs = st.tabs(["🔑 Sign In", "📝 Sign Up", "👻 Continue as Guest"])
+        
+        with tabs[0]:
+            with st.form("welcome_login_form"):
+                email = st.text_input("Email", placeholder="your-email@example.com", key="welcome_login_email")
+                password = st.text_input("Password", type="password", key="welcome_login_pwd")
+                submitted = st.form_submit_button("Sign In", type="primary", use_container_width=True)
+                if submitted:
+                    db = _get_db()
+                    res, err = db.sign_in(email, password)
+                    if err:
+                        st.error(f"❌ {err}")
+                    else:
+                        st.session_state["user"] = res.user
+                        st.session_state["is_anonymous"] = False
+                        _sync_session_analysis_to_db(db, res.user.id)
+                        st.toast(f"Welcome back, {res.user.email}! 👋", icon="✅")
+                        st.rerun()
+
+        with tabs[1]:
+            with st.form("welcome_signup_form"):
+                email = st.text_input("Email Address", placeholder="name@domain.com", key="welcome_signup_email")
+                password = st.text_input("Choose Password", type="password", key="welcome_signup_pwd")
+                full_name = st.text_input("Full Name", placeholder="Jane Doe", key="welcome_signup_name")
+                submitted = st.form_submit_button("Create Account", type="primary", use_container_width=True)
+                if submitted:
+                    db = _get_db()
+                    res, err = db.sign_up(email, password, full_name)
+                    if err:
+                        st.error(f"❌ {err}")
+                    else:
+                        st.success("📧 Verification email sent! Please check your inbox.")
+
+        with tabs[2]:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="text-align: center; margin-bottom: 1.5rem; font-size: 0.9rem; color: #A1A1AA; line-height: 1.5;">
+                Perfect for a quick test run. We will score your resume and show 
+                your gaps immediately, but you won't be able to save your history.
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button("👻 Start in Guest Mode", type="primary", use_container_width=True):
+                class GuestUser:
+                    def __init__(self):
+                        self.id = "guest_session"
+                        self.email = "guest@local"
+                st.session_state["user"] = GuestUser()
+                st.session_state["is_anonymous"] = True
+                st.toast("Entered Guest Mode! 👻", icon="👻")
+                st.rerun()
+
+
+# ==============================================================================
 # Router
 # ==============================================================================
 def main():
     db = render_sidebar()
+    user = st.session_state.get("user")
+    
+    if not user:
+        render_welcome_stage()
+        return
+
     stage = st.session_state["app_stage"]
     if stage == "upload":
         render_upload_stage()

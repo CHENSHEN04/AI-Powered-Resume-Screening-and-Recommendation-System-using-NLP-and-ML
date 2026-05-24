@@ -91,6 +91,14 @@ class GapAnalyzer:
                 if role_data:
                     break
 
+        # 3. Fallback to session state (for offline/guest custom roles)
+        if not role_data:
+            for _slug in slug_variations:
+                session_key = f"custom_standards_{_slug}"
+                if session_key in st.session_state:
+                    role_data = st.session_state[session_key]
+                    break
+
         if not role_data:
             return {
                 "error": "Role not found in standards",

@@ -158,3 +158,36 @@ class AIAssistant:
         for kw, r in self._RULES.items():
             if kw in q: return r
         return self._RULES["default"]
+
+
+_ROLE_GEN_PROMPT = """You are an expert technical recruiter and systems analyst.
+For the job role title: "{role_title}"
+Generate a comprehensive list of typical responsibilities, required skills, recommended skills, and nice-to-have skills.
+Return ONLY a valid JSON object with the following keys and structure:
+- "description": "a concise 2-3 sentence overview of this role's primary responsibilities"
+- "required_skills": ["List of 6-8 core technical/hard skills absolutely required for this role (specific technologies, methodologies or tools)"]
+- "recommended_skills": ["List of 4-6 supplementary or supportive skills (tools, frameworks, processes)"]
+- "nice_to_have_skills": ["List of 3-5 soft skills or extra skills that set a candidate apart"]
+
+Ensure the skills are formatted as standard technological keywords or industry terms. Return ONLY valid JSON, no markdown blocks, no extra text."""
+
+
+class AIRoleStandardGenerator:
+    def generate_standards(self, role_title: str) -> Dict:
+        prompt = _ROLE_GEN_PROMPT.format(role_title=role_title)
+        raw = _call_ai(prompt, max_tokens=1024)
+        if raw:
+            try:
+                clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+                parsed = json.loads(clean)
+                return parsed
+            except Exception as e:
+                logger.warning(f"AI JSON parse failed for role standards: {e}")
+        # Rule-based fallback if AI is offline
+        return {
+            "description": f"Standard industry responsibilities and skills for a {role_title}.",
+            "required_skills": ["Communication", "Problem Solving", "Technical Aptitude"],
+            "recommended_skills": ["Project Management", "Team Collaboration"],
+            "nice_to_have_skills": ["Adaptability", "Continuous Learning"]
+        }
+
