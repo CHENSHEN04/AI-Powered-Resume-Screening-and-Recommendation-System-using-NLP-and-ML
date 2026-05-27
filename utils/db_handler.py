@@ -415,8 +415,45 @@ class DatabaseManager:
                 })
             return output
         except Exception as e:
-            # st.error(f"DB Error fetching resources: {e}")
             return {}
+
+    def save_learning_resources(self, skill_name: str, resources: List[Dict]) -> bool:
+        """
+        Save dynamically generated learning resources for a skill to the database.
+        """
+        if not self.supabase or not skill_name or not resources:
+            return False
+        try:
+            # 1. Ensure Skill exists
+            sk = self.supabase.table("skills").select("id").eq("name", skill_name).execute()
+            if sk.data:
+                skill_id = sk.data[0]["id"]
+            else:
+                self.supabase.table("skills").insert({"name": skill_name}).execute()
+                sk2 = self.supabase.table("skills").select("id").eq("name", skill_name).execute()
+                if not sk2.data:
+                    return False
+                skill_id = sk2.data[0]["id"]
+            
+            # 2. Save each resource
+            for res in resources:
+                # Check if resource already exists
+                existing = self.supabase.table("learning_resources")\
+                    .select("id")\
+                    .eq("skill_id", skill_id)\
+                    .eq("url", res["url"])\
+                    .execute()
+                if not existing.data:
+                    self.supabase.table("learning_resources").insert({
+                        "skill_id": skill_id,
+                        "title": res["title"],
+                        "url": res["url"],
+                        "resource_type": res.get("type", "Course"),
+                        "difficulty": res.get("difficulty", "Beginner")
+                    }).execute()
+            return True
+        except Exception:
+            return False
 
     def log_system_event(self, level: str, message: str, details: Dict[str, Any] = None):
         """

@@ -684,27 +684,81 @@ def render_teaser_stage():
     if score_result:
         with st.expander("🔢 How was this score calculated?", expanded=False):
             comps = score_result.get("component_scores", {})
-            st.markdown("""
-| Component | Weight | Your Score | Contribution |
-|-----------|--------|-----------|--------------|
-| Profile & Job Alignment | 50% | {bert:.1f}% | {bert_c:.1f}% |
-| Technical Skills Match | 30% | {skill:.1f}% | {skill_c:.1f}% |
-| Industry Target Accuracy | 10% | {svm:.1f}% | {svm_c:.1f}% |
-| Academic Background Alignment | 10% | {edu:.1f}% | {edu_c:.1f}% |
-| **Total** | **100%** | | **{total:.1f}%** |
+            
+            def get_score_color(val):
+                if val >= 80:
+                    return "#43E97B" # 🟢 Strong Green
+                elif val >= 55:
+                    # LERP transition from yellow (#ffa421 -> RGB 255, 164, 33) to green (#43E97B -> RGB 67, 233, 123)
+                    ratio = (val - 55) / 25.0
+                    r = int(255 + (67 - 255) * ratio)
+                    g = int(164 + (233 - 164) * ratio)
+                    b = int(33 + (123 - 33) * ratio)
+                    return f"#{r:02X}{g:02X}{b:02X}"
+                else:
+                    return "#FF6584" # 🔴 Weak Red
+                    
+            bert_val = comps.get("bert_semantic", 0) / 0.5
+            skill_val = comps.get("skill_overlap", 0) / 0.3
+            svm_val = comps.get("svm_confidence", 0) / 0.1
+            edu_val = comps.get("education_match", 0) / 0.1
+            total_val = score_result.get("final_score", 0)
+            
+            bert_color = get_score_color(bert_val)
+            skill_color = get_score_color(skill_val)
+            svm_color = get_score_color(svm_val)
+            edu_color = get_score_color(edu_val)
+            total_color = get_score_color(total_val)
+            
+            st.markdown(f"""<table style="width:100%; border-collapse: collapse; margin: 15px 0; background: rgba(255,255,255,0.01); border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08); font-size: 1.05rem;">
+<thead>
+<tr style="background: rgba(255,255,255,0.04); text-align: left; border-bottom: 1px solid rgba(255,255,255,0.08);">
+<th style="padding: 12px; font-weight: 700; color: #FAFAFA;">Component</th>
+<th style="padding: 12px; font-weight: 700; color: #FAFAFA; width: 90px;">Weight</th>
+<th style="padding: 12px; font-weight: 700; color: #FAFAFA; width: 130px;">Your Score</th>
+<th style="padding: 12px; font-weight: 700; color: #FAFAFA; width: 130px;">Contribution</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+<td style="padding: 12px; color: #C0C6D0;">Profile & Job Alignment</td>
+<td style="padding: 12px; color: #C0C6D0;">50%</td>
+<td style="padding: 12px; font-weight: 700; color: {bert_color};">{bert_val:.1f}%</td>
+<td style="padding: 12px; font-weight: 700; color: {bert_color};">{comps.get("bert_semantic", 0):.1f}%</td>
+</tr>
+<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+<td style="padding: 12px; color: #C0C6D0;">Technical Skills Match</td>
+<td style="padding: 12px; color: #C0C6D0;">30%</td>
+<td style="padding: 12px; font-weight: 700; color: {skill_color};">{skill_val:.1f}%</td>
+<td style="padding: 12px; font-weight: 700; color: {skill_color};">{comps.get("skill_overlap", 0):.1f}%</td>
+</tr>
+<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+<td style="padding: 12px; color: #C0C6D0;">Industry Target Accuracy</td>
+<td style="padding: 12px; color: #C0C6D0;">10%</td>
+<td style="padding: 12px; font-weight: 700; color: {svm_color};">{svm_val:.1f}%</td>
+<td style="padding: 12px; font-weight: 700; color: {svm_color};">{comps.get("svm_confidence", 0):.1f}%</td>
+</tr>
+<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+<td style="padding: 12px; color: #C0C6D0;">Academic Background Alignment</td>
+<td style="padding: 12px; color: #C0C6D0;">10%</td>
+<td style="padding: 12px; font-weight: 700; color: {edu_color};">{edu_val:.1f}%</td>
+<td style="padding: 12px; font-weight: 700; color: {edu_color};">{comps.get("education_match", 0):.1f}%</td>
+</tr>
+<tr style="background: rgba(255,255,255,0.03); border-top: 1px solid rgba(255,255,255,0.1);">
+<td style="padding: 12px; font-weight: 700; color: #FAFAFA;">Total</td>
+<td style="padding: 12px; font-weight: 700; color: #FAFAFA;">100%</td>
+<td style="padding: 12px;"></td>
+<td style="padding: 12px; font-weight: 700; color: {total_color};">{total_val:.1f}%</td>
+</tr>
+</tbody>
+</table>
 
-**Thresholds:** 🟢 Strong ≥ 80% &nbsp;|&nbsp; 🟡 Moderate ≥ 55% &nbsp;|&nbsp; 🔴 Weak < 55%
-            """.format(
-                bert   = comps.get("bert_semantic",   0) / 0.5,
-                bert_c = comps.get("bert_semantic",   0),
-                skill  = comps.get("skill_overlap",   0) / 0.3,
-                skill_c= comps.get("skill_overlap",   0),
-                svm    = comps.get("svm_confidence",  0) / 0.1,
-                svm_c  = comps.get("svm_confidence",  0),
-                edu    = comps.get("education_match", 0) / 0.1,
-                edu_c  = comps.get("education_match", 0),
-                total  = score_result.get("final_score", 0),
-            ))
+<div style="font-size: 1.05rem; margin-top: 10px; font-weight: 600; color: #FAFAFA; display: flex; gap: 15px; align-items: center;">
+<span>Thresholds:</span>
+<span style="color: #43E97B;">🟢 Strong &ge; 80%</span>
+<span style="color: #ffa421;">🟡 Moderate &ge; 55%</span>
+<span style="color: #FF6584;">🔴 Weak &lt; 55%</span>
+</div>""", unsafe_allow_html=True)
             st.caption("Industry accuracy score starts at 0% on your first run while systems warm up. Re-run analysis to see the updated score.")
 
     # Quick Stats
@@ -1027,57 +1081,119 @@ def render_dashboard_stage():
             sc4.metric("Academic Alignment (10%)", f"{comps['education_match']:.1f}%")
             st.caption("Final score = Alignment×50% + Skills Match×30% + Industry Accuracy×10% + Academic Alignment×10%")
             
-        # Sleek Glassmorphic Roadmap
-        st.markdown("""
-        <div class="glass-panel" style="padding: 1.7rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); background: rgba(17,17,21,0.65); margin-top: 1rem; margin-bottom: 1rem;">
-            <h4 style="margin-top: 0; color: #43E97B; font-size: 1.3rem; display: flex; align-items: center; gap: 8px;">🛠️ Actionable Roadmap to Boost Your Score</h4>
-            <p style="color: #A1A1AA; font-size: 1.0rem; margin-bottom: 1.3rem; line-height: 1.6;">
-                Lower scores occur when your resume's language lacks context, specific technical terms, or clear structure. Follow this customized blueprint to improve your profile:
-            </p>
-            <ul style="list-style-type: none; padding-left: 0; margin-bottom: 0;">
-                <li style="margin-bottom: 1.3rem; padding-bottom: 1.0rem; border-bottom: 1px solid rgba(255,255,255,0.06);">
-                    <div style="font-weight: 700; color: #FAFAFA; font-size: 1.1rem; margin-bottom: 0.3rem;">🧠 1. Boost Profile & Job Alignment (50% weight)</div>
-                    <div style="color: #D1D1D6; font-size: 0.95rem; line-height: 1.55; margin-left: 1.5rem;">
-                        <strong>Why it is low:</strong> Your descriptions might be too brief, use passive/generic terms, or lack context matching the job description's phrasing.
-                        <br><span style="color: #43E97B; font-weight: 600;">💡 Core Action:</span> Elaborate on your accomplishments using the <span style="color: #6C63FF; font-weight: 700;">STAR method</span> (Situation, Task, Action, Result). Mimic active verbs (e.g. <em>orchestrated</em>, <em>engineered</em>, <em>streamlined</em>) from the Job Description.
-                    </div>
-                </li>
-                <li style="margin-bottom: 1.3rem; padding-bottom: 1.0rem; border-bottom: 1px solid rgba(255,255,255,0.06);">
-                    <div style="font-weight: 700; color: #FAFAFA; font-size: 1.1rem; margin-bottom: 0.3rem;">🎯 2. Boost Technical Skills Match (30% weight)</div>
-                    <div style="color: #D1D1D6; font-size: 0.95rem; line-height: 1.55; margin-left: 1.5rem;">
-                        <strong>Why it is low:</strong> You are missing specific technical tools, programming languages, or platforms required by the employer.
-                        <br><span style="color: #43E97B; font-weight: 600;">💡 Core Action:</span> Go to the <span style="color: #6C63FF; font-weight: 700;">Skill Gaps</span> tab below and check the list of <span style="color: #FF6584; font-weight: 700;">❌ Missing Skills</span>. Weave these exact keywords naturally into your resume’s skill inventory and job bullets.
-                    </div>
-                </li>
-                <li style="margin-bottom: 1.3rem; padding-bottom: 1.0rem; border-bottom: 1px solid rgba(255,255,255,0.06);">
-                    <div style="font-weight: 700; color: #FAFAFA; font-size: 1.1rem; margin-bottom: 0.3rem;">💼 3. Boost Industry Target Accuracy (10% weight)</div>
-                    <div style="color: #D1D1D6; font-size: 0.95rem; line-height: 1.55; margin-left: 1.5rem;">
-                        <strong>Why it is low:</strong> Your overall profile reads too broadly or matches multiple professional categories, dropping classifier confidence for your target role.
-                        <br><span style="color: #43E97B; font-weight: 600;">💡 Core Action:</span> Open your resume with a clear <span style="color: #6C63FF; font-weight: 700;">professional summary header</span> containing your target job title (e.g., <em>"Data Analyst with 2+ years of experience..."</em>). Focus your experience descriptions purely on tasks specific to this professional domain. <em>(Note: Accuracy score starts at 0% on your first run. Try running a second time to warm up systems!)</em>.
-                    </div>
-                </li>
-                <li style="margin-bottom: 0;">
-                    <div style="font-weight: 700; color: #FAFAFA; font-size: 1.1rem; margin-bottom: 0.3rem;">🎓 4. Boost Academic Background Alignment (10% weight)</div>
-                    <div style="color: #D1D1D6; font-size: 0.95rem; line-height: 1.55; margin-left: 1.5rem;">
-                        <strong>Why it is low:</strong> Your educational field (major or degree title) is missing or parsed differently than standard major profiles.
-                        <br><span style="color: #43E97B; font-weight: 600;">💡 Core Action:</span> Clearly define your <span style="color: #6C63FF; font-weight: 700;">degree name and field of study</span> under your education section (e.g., <em>"B.S. in Computer Science"</em> or <em>"M.S. in Business Analytics"</em>), matching conventional academic naming.
-                    </div>
-                </li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
+        # Build dynamic roadmap items list
+        roadmap_items = []
+        
+        comps_map = score_result.get("component_scores", {})
+        bert_val = comps_map.get("bert_semantic", 0) / 0.5
+        skill_val = comps_map.get("skill_overlap", 0) / 0.3
+        svm_val = comps_map.get("svm_confidence", 0) / 0.1
+        edu_val = comps_map.get("education_match", 0) / 0.1
+        
+        if bert_val < 80:
+            roadmap_items.append(f"""<li style="margin-bottom: 1.3rem; padding-bottom: 1.0rem; border-bottom: 1px solid rgba(255,255,255,0.06);">
+<div style="font-weight: 700; color: #FAFAFA; font-size: 1.1rem; margin-bottom: 0.3rem;">🧠 1. Boost Profile & Job Alignment (Current Score: {bert_val:.1f}% | 50% weight)</div>
+<div style="color: #D1D1D6; font-size: 0.95rem; line-height: 1.55; margin-left: 1.5rem;">
+<strong>Why it is low:</strong> Your descriptions might be too brief, use passive/generic terms, or lack context matching the job description's phrasing.
+<br><span style="color: #43E97B; font-weight: 600;">💡 Core Action:</span> Elaborate on your accomplishments using the <span style="color: #6C63FF; font-weight: 700;">STAR method</span> (Situation, Task, Action, Result). Mimic active verbs (e.g. <em>orchestrated</em>, <em>engineered</em>, <em>streamlined</em>) from the Job Description to instantly raise alignment score.
+</div>
+</li>""")
+            
+        if skill_val < 80:
+            missing_skills_list = st.session_state.get("missing_skills", [])
+            missing_text = " Go to the <span style='color: #6C63FF; font-weight: 700;'>Skill Gaps</span> tab below and check the list of <span style='color: #FF6584; font-weight: 700;'>❌ Missing Skills</span>."
+            if missing_skills_list:
+                missing_text = f" We detected that you are missing key skills like: <strong>{', '.join(list(missing_skills_list)[:3])}</strong>."
+            roadmap_items.append(f"""<li style="margin-bottom: 1.3rem; padding-bottom: 1.0rem; border-bottom: 1px solid rgba(255,255,255,0.06);">
+<div style="font-weight: 700; color: #FAFAFA; font-size: 1.1rem; margin-bottom: 0.3rem;">🎯 2. Boost Technical Skills Match (Current Score: {skill_val:.1f}% | 30% weight)</div>
+<div style="color: #D1D1D6; font-size: 0.95rem; line-height: 1.55; margin-left: 1.5rem;">
+<strong>Why it is low:</strong> You are missing specific technical tools, programming languages, or platforms required by the employer.
+<br><span style="color: #43E97B; font-weight: 600;">💡 Core Action:</span>{missing_text} Weave these exact keywords naturally into your resume’s skill inventory and experience bullets.
+</div>
+</li>""")
+            
+        if svm_val < 80:
+            roadmap_items.append(f"""<li style="margin-bottom: 1.3rem; padding-bottom: 1.0rem; border-bottom: 1px solid rgba(255,255,255,0.06);">
+<div style="font-weight: 700; color: #FAFAFA; font-size: 1.1rem; margin-bottom: 0.3rem;">💼 3. Boost Industry Target Accuracy (Current Score: {svm_val:.1f}% | 10% weight)</div>
+<div style="color: #D1D1D6; font-size: 0.95rem; line-height: 1.55; margin-left: 1.5rem;">
+<strong>Why it is low:</strong> Your overall profile reads too broadly or matches multiple professional categories, dropping classifier confidence for your target role.
+<br><span style="color: #43E97B; font-weight: 600;">💡 Core Action:</span> Open your resume with a clear <span style="color: #6C63FF; font-weight: 700;">professional summary header</span> containing your target job title (e.g., <em>"{target_role.replace('_', ' ').title()} with 2+ years of experience..."</em>). Focus your experience descriptions purely on tasks specific to this professional domain.
+</div>
+</li>""")
+            
+        if edu_val < 80:
+            roadmap_items.append(f"""<li style="margin-bottom: 0;">
+<div style="font-weight: 700; color: #FAFAFA; font-size: 1.1rem; margin-bottom: 0.3rem;">🎓 4. Boost Academic Background Alignment (Current Score: {edu_val:.1f}% | 10% weight)</div>
+<div style="color: #D1D1D6; font-size: 0.95rem; line-height: 1.55; margin-left: 1.5rem;">
+<strong>Why it is low:</strong> Your educational field (major or degree title) is missing or parsed differently than standard major profiles.
+<br><span style="color: #43E97B; font-weight: 600;">💡 Core Action:</span> Clearly define your <span style="color: #6C63FF; font-weight: 700;">degree name and field of study</span> under your education section (e.g., <em>"B.S. in Computer Science"</em> or <em>"M.S. in Business Analytics"</em>), matching conventional academic naming.
+</div>
+</li>""")
+            
+        if not roadmap_items:
+            roadmap_items.append(f"""<li style="margin-bottom: 0; text-align: center; padding: 1.5rem;">
+<div style="font-weight: 700; color: #43E97B; font-size: 1.25rem; margin-bottom: 0.5rem;">🎉 Outstanding Profile!</div>
+<div style="color: #D1D1D6; font-size: 1.0rem; line-height: 1.6;">
+Your resume is highly optimized and demonstrates exceptionally strong alignment across all four matching dimensions! Focus on practicing standard interview simulations in our <strong>AI Coach</strong> tab to finalize your prep.
+</div>
+</li>""")
+            
+        roadmap_content = "\n".join(roadmap_items)
+        st.markdown(f"""<div class="glass-panel" style="padding: 1.7rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); background: rgba(17,17,21,0.65); margin-top: 1rem; margin-bottom: 1rem;">
+<h4 style="margin-top: 0; color: #43E97B; font-size: 1.3rem; display: flex; align-items: center; gap: 8px;">🛠️ Actionable Roadmap to Boost Your Score</h4>
+<p style="color: #A1A1AA; font-size: 1.0rem; margin-bottom: 1.3rem; line-height: 1.6;">
+{"Your profile requires some targeted enhancements to maximize alignment with employer expectations. Focus on the custom items below:" if bert_val < 80 or skill_val < 80 or svm_val < 80 or edu_val < 80 else "Your profile is fully optimized! Review your alignment indicators below:"}
+</p>
+<ul style="list-style-type: none; padding-left: 0; margin-bottom: 0;">
+{roadmap_content}
+</ul>
+</div>""", unsafe_allow_html=True)
 
     # ── Section scores bar chart ──
     if jd_match and jd_match.get("section_scores"):
         with st.expander("📊 Section-Level Alignment Scores", expanded=True):
             st.markdown("""
-            This chart displays how closely each distinct section of your resume (Education, Experience, Skills, and Summary) semantically aligns with the context and intent of the Job Description. **Higher bars indicate stronger relevance and a closer contextual match to the employer's expectations.**
+            This chart displays how closely each distinct section of your resume (Education, Experience, Skills, and Summary) semantically aligns with the context and intent of the Job Description. **Higher/greener bars indicate stronger relevance and a closer contextual match to the employer's expectations.**
             """)
-            sec_df = pd.DataFrame(
-                list(jd_match["section_scores"].items()),
-                columns=["Section", "Score (%)"]
-            )
-            st.bar_chart(sec_df.set_index("Section"), color="#6C63FF")
+            
+            section_scores = jd_match["section_scores"]
+            
+            # Draw beautiful custom HTML bar chart
+            bars_html = ""
+            for sec, val in section_scores.items():
+                # Get dynamic color
+                if val >= 80:
+                    color = "#43E97B" # 🟢 Strong Green
+                elif val >= 55:
+                    ratio = (val - 55) / 25.0
+                    r = int(255 + (67 - 255) * ratio)
+                    g = int(164 + (233 - 164) * ratio)
+                    b = int(33 + (123 - 33) * ratio)
+                    color = f"#{r:02X}{g:02X}{b:02X}"
+                else:
+                    color = "#FF6584" # 🔴 Weak Red
+                    
+                height_pct = max(val, 5) # Ensure visible bar
+                
+                # Convert hex to RGB values for gradient shadow
+                r_val = int(color[1:3], 16)
+                g_val = int(color[3:5], 16)
+                b_val = int(color[5:7], 16)
+                
+                bars_html += f"""<div style="display: flex; flex-direction: column; align-items: center; width: 22%;">
+<div style="height: 220px; width: 100%; display: flex; align-items: flex-end; background: rgba(255,255,255,0.03); border-radius: 8px; position: relative;">
+<div style="height: {height_pct}%; width: 100%; background: linear-gradient(180deg, {color}, rgba({r_val}, {g_val}, {b_val}, 0.1)); border-radius: 6px; box-shadow: 0 0 15px rgba({r_val}, {g_val}, {b_val}, 0.3); transition: all 0.3s ease;">
+<span style="position: absolute; top: -25px; left: 50%; transform: translateX(-50%); color: #FAFAFA; font-weight: 700; font-size: 0.95rem;">{val:.0f}%</span>
+</div>
+</div>
+<span style="color: #FAFAFA; font-weight: 600; font-size: 1rem; margin-top: 10px; text-transform: capitalize; text-align: center;">{sec}</span>
+</div>"""
+                
+            st.markdown(f"""<div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 2rem 1.5rem 1.5rem 1.5rem; margin-top: 1rem;">
+<div style="display: flex; justify-content: space-between; align-items: flex-end; height: 260px;">
+{bars_html}
+</div>
+</div>""", unsafe_allow_html=True)
             if jd_match.get("missing_sections"):
                 st.warning(f"⚠️ Sections not detected in resume: {', '.join(jd_match['missing_sections'])}")
 
@@ -1354,7 +1470,7 @@ def render_dashboard_stage():
                             </div>
                             """
                     html_content += "</div>"
-                    st.components.v1.html(html_content.format(img_base64=img_b64), height=820)
+                    st.components.v1.html(html_content.replace("{img_base64}", img_b64), height=820)
                 except Exception as html_err:
                     st.error(f"Failed to render interactive image: {html_err}")
                     
@@ -1418,16 +1534,55 @@ def render_dashboard_stage():
     if st.session_state.get("explanation"):
         expl = st.session_state["explanation"]
         with st.expander("🔍 Why This Role? (AI Explainability)"):
-            st.info("Keywords that most influenced the AI's classification decision.")
-            top_keywords = [k[0] for k in expl.get("positive", [])[:5]]
+            top_keywords = [k[0] for k in expl.get("positive", [])[:6]]
+            
+            st.markdown(f"### 🤝 Match Analysis for **{role_display}**")
+            
             if top_keywords:
-                st.markdown(
-                    f"Your profile aligns with **{role_display}** because of: "
-                    + ", ".join([f"**{k}**" for k in top_keywords])
-                )
+                kw_badges = " ".join([f'<span style="background: rgba(108, 99, 255, 0.15); color: #8F8AFF; border: 1px solid rgba(108, 99, 255, 0.3); padding: 4px 10px; border-radius: 20px; font-size: 0.85rem; margin: 4px; display: inline-block; font-weight: 500;">{k}</span>' for k in top_keywords])
+                
+                st.markdown(f"""
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem;">
+                    <h5 style="color: #43E97B; margin-top: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
+                        <span>✨ Recruiter Assessment</span>
+                    </h5>
+                    <p style="color: #E4E4E7; font-size: 1rem; line-height: 1.6; margin-bottom: 1rem;">
+                        Our semantic match engine analyzed your resume against the industry standards for a <b>{role_display}</b>. 
+                        Your profile demonstrates a strong foundational alignment, heavily anchored by key domain concepts and technical competencies detected in your experience and projects.
+                    </p>
+                    <div style="margin-top: 1rem;">
+                        <span style="color: #A1A1AA; font-size: 0.9rem; font-weight: 600; display: block; margin-bottom: 8px;">Key Influence Keywords:</span>
+                        <div>{kw_badges}</div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown("#### Domain Alignment Analysis")
                 p_df = pd.DataFrame(expl["positive"][:10], columns=["Keyword", "Impact"])
-                st.bar_chart(p_df.sort_values("Impact", ascending=False).set_index("Keyword"), color="#6C63FF")
-            st.caption("Score formula: BERT(50%) + Skills(30%) + SVM(10%) + Education(10%)")
+                st.markdown("<p style='color: #A1A1AA; font-size: 0.95rem; margin-bottom: 1rem;'>Visual breakdown of the semantic weight and relevance score of each matching concept extracted from your resume:</p>", unsafe_allow_html=True)
+                
+                for idx, row in p_df.iterrows():
+                    kw = row["Keyword"]
+                    val = row["Impact"]
+                    max_val = p_df["Impact"].max() if p_df["Impact"].max() > 0 else 1.0
+                    pct = min(int((val / max_val) * 100), 100)
+                    st.markdown(f"""
+                    <div style="margin-bottom: 0.75rem;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 3px; font-weight: 500;">
+                            <span style="color: #E4E4E7;">{kw}</span>
+                            <span style="color: #8F8AFF;">Semantic Relevance: {pct}%</span>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.05); border-radius: 4px; height: 8px; width: 100%; overflow: hidden;">
+                            <div style="background: linear-gradient(90deg, #6C63FF, #43E97B); width: {pct}%; height: 100%; border-radius: 4px;"></div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 1.5rem;">
+                    <p style="color: #A1A1AA; font-size: 1rem;">No strong direct keyword correlations could be extracted. The match score is primarily determined by general semantic role mapping.</p>
+                </div>
+                """, unsafe_allow_html=True)
 
     # ── History ──
     user = st.session_state.get("user")

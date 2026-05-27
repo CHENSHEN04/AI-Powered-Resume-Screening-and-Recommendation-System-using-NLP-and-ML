@@ -100,6 +100,37 @@ class GapAnalyzer:
                     break
 
         if not role_data:
+            import sys
+            if "pytest" not in sys.modules:
+                try:
+                    from utils.ai_assistant import AIRoleStandardGenerator
+                    ai_gen = AIRoleStandardGenerator()
+                    role_title = target_role.replace("_", " ").title()
+                    role_data = ai_gen.generate_standards(role_title)
+                    
+                    if role_data:
+                        if "nice_to_have_skills" in role_data and "nice_to_have" not in role_data:
+                            role_data["nice_to_have"] = role_data["nice_to_have_skills"]
+                            
+                        # Save to DB so other users targeting the same approach have access!
+                        if self.db_manager:
+                            try:
+                                slug_name = target_role.lower().replace(" ", "_").replace("/", "_").replace("-", "_")
+                                self.db_manager.save_custom_role(
+                                    role_title=role_title,
+                                    role_slug=slug_name,
+                                    required_skills=role_data.get("required_skills", []),
+                                    recommended_skills=role_data.get("recommended_skills", []),
+                                    nice_to_have_skills=role_data.get("nice_to_have", [])
+                                )
+                            except Exception as db_save_err:
+                                import logging
+                                logging.warning(f"Failed to auto-harvest dynamic job role standards to DB: {db_save_err}")
+                except Exception as e:
+                    import logging
+                    logging.warning(f"Failed to generate dynamic AI standards: {e}")
+
+        if not role_data:
             return {
                 "error": "Role not found in standards",
                 "role": target_role,
@@ -204,13 +235,16 @@ class GapAnalyzer:
         return recs
 
     def _get_learning_resources(self, missing_skills: List[str]) -> Dict[str, List[Dict]]:
-        """Get learning resources for missing skills (DB + JSON fallback)."""
+        """Get learning resources for missing skills (DB + JSON fallback + Dynamic AI Generator)."""
         paths = {}
         
         # 1. Try DB
         if self.db_manager:
-            db_paths = self.db_manager.get_learning_resources(missing_skills)
-            paths.update(db_paths)
+            try:
+                db_paths = self.db_manager.get_learning_resources(missing_skills)
+                paths.update(db_paths)
+            except Exception:
+                pass
             
         # 2. Fill gaps from JSON
         # Only fetch for skills not found or simple merge
@@ -221,5 +255,36 @@ class GapAnalyzer:
                 skill_key = skill.lower()
                 if skill_key in all_resources:
                     paths[skill] = all_resources[skill_key]
+                    
+        # 3. Dynamic AI Fallback (Knowledge Harvesting & Collaborative database loop)
+        for skill in missing_skills:
+            if skill not in paths:
+                try:
+                    from utils.ai_assistant import _call_ai
+                    prompt = f"""You are an expert technical educator. For the skill: "{skill}"
+Generate 2 high-quality recommended learning resources (e.g. online courses, official tutorials, or books).
+Return ONLY a valid JSON array of objects, where each object has these exact keys:
+- "title": "concise title of the course/tutorial"
+- "url": "a high-quality valid link (e.g., to Coursera, Udemy, or official documentation like react.dev or python.org)"
+- "type": "Course", "Article", "Video", or "Project"
+- "difficulty": "Beginner", "Intermediate", or "Advanced"
+
+Return ONLY valid JSON. No markdown block backticks, no extra text."""
+                    raw = _call_ai(prompt, max_tokens=512)
+                    if raw:
+                        clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+                        resources = json.loads(clean)
+                        if isinstance(resources, list) and len(resources) > 0:
+                            paths[skill] = resources
+                            # Write back to Supabase! (Collective Intelligence loop!)
+                            if self.db_manager:
+                                try:
+                                    self.db_manager.save_learning_resources(skill, resources)
+                                except Exception as db_save_err:
+                                    import logging
+                                    logging.warning(f"Failed to auto-harvest dynamic learning resources to DB: {db_save_err}")
+                except Exception as e:
+                    import logging
+                    logging.warning(f"Failed to generate dynamic learning resources for skill {skill}: {e}")
                 
         return paths

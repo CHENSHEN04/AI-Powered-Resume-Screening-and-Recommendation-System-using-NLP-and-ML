@@ -39,8 +39,8 @@
 .main .block-container span,
 .main .block-container div {
     color: var(--text-body);
-    font-size: 1rem;
-    line-height: 1.7;
+    font-size: 1.12rem;
+    line-height: 1.75;
 }
 
 h1,
@@ -60,13 +60,13 @@ h1 {
 }
 
 h2 {
-    font-size: 1.6rem !important;
+    font-size: 1.8rem !important;
     font-weight: 700;
     margin-top: 1.5rem;
 }
 
 h3 {
-    font-size: 1.25rem !important;
+    font-size: 1.4rem !important;
     font-weight: 600;
 }
 
@@ -396,13 +396,13 @@ section[data-testid="stSidebar"] .stRadio label {
 details summary {
     color: var(--text-primary) !important;
     font-weight: 500;
-    font-size: 1rem !important;
+    font-size: 1.12rem !important;
 }
 
 /* --- Success / Error Messages --- */
 .stAlert {
     border-radius: var(--radius-sm) !important;
-    font-size: 0.95rem !important;
+    font-size: 1.05rem !important;
 }
 
 /* --- Selectbox and Inputs --- */
@@ -412,7 +412,7 @@ details summary {
 .stNumberInput label {
     color: var(--text-primary) !important;
     font-weight: 500 !important;
-    font-size: 0.95rem !important;
+    font-size: 1.08rem !important;
 }
 
 /* --- Mobile Responsive --- */

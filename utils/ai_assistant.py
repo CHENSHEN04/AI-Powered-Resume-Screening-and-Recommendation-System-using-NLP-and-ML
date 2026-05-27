@@ -64,53 +64,80 @@ def _active_provider():
     return "rule_based"
 
 # ── Gemini ────────────────────────────────────────────────────────────────────
-def _call_gemini(prompt, system="", max_tokens=1024):
+import urllib.request
+import urllib.error
+
+# ── Gemini (Direct HTTP v1 API) ───────────────────────────────────────────────
+def _call_gemini_http(prompt, system="", max_tokens=1024, image_bytes=None):
+    key = _secret("GEMINI_API_KEY")
+    if not key:
+        return None
+        
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
+    
+    parts = []
+    if system:
+        parts.append({"text": f"System Instruction:\n{system}\n\nUser Prompt:\n{prompt}"})
+    else:
+        parts.append({"text": prompt})
+        
+    if image_bytes:
+        import base64
+        img_b64 = base64.b64encode(image_bytes).decode("utf-8")
+        parts.append({
+            "inlineData": {
+                "mimeType": "image/png",
+                "data": img_b64
+            }
+        })
+        
+    payload = {
+        "contents": [{"parts": parts}],
+        "generation_config": {
+            "max_output_tokens": max_tokens,
+            "temperature": 0.2
+        }
+    }
+    
+
+        
     try:
-        import google.generativeai as genai
-        key = _secret("GEMINI_API_KEY")
-        if not key: return None
-        genai.configure(api_key=key)
-        try:
-            m = genai.GenerativeModel("gemini-1.5-flash",
-                    system_instruction=system or None)
-            r = m.generate_content(prompt,
-                    generation_config={"max_output_tokens": max_tokens, "temperature": 0.7})
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        
+        with urllib.request.urlopen(req) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
             if "gemini_error" in st.session_state:
                 del st.session_state["gemini_error"]
-            return r.text
-        except Exception as flash_err:
-            logger.warning(f"Gemini 1.5 Flash failed: {flash_err}. Trying gemini-pro fallback.")
-            try:
-                m = genai.GenerativeModel("gemini-pro",
-                        system_instruction=system or None)
-                r = m.generate_content(prompt,
-                        generation_config={"max_output_tokens": max_tokens, "temperature": 0.7})
-                if "gemini_error" in st.session_state:
-                    del st.session_state["gemini_error"]
-                return r.text
-            except Exception as pro_err:
-                st.session_state["gemini_error"] = f"Gemini 1.5 Flash: {flash_err} | Gemini Pro: {pro_err}"
-                raise pro_err
+            
+            candidates = res_data.get("candidates", [])
+            if candidates:
+                parts = candidates[0].get("content", {}).get("parts", [])
+                if parts:
+                    return parts[0].get("text")
+                    
+    except urllib.error.HTTPError as he:
+        err_msg = he.read().decode("utf-8")
+        logger.warning(f"Gemini HTTP Error {he.code}: {err_msg}")
+        st.session_state["gemini_error"] = f"HTTP {he.code}: {err_msg}"
     except Exception as e:
-        logger.warning(f"Gemini failed: {e}"); return None
+        logger.warning(f"Gemini HTTP call failed: {e}")
+        st.session_state["gemini_error"] = str(e)
+        
+    return None
+
+def _call_gemini(prompt, system="", max_tokens=1024):
+    return _call_gemini_http(prompt, system, max_tokens)
 
 def _stream_gemini(prompt, system=""):
-    try:
-        import google.generativeai as genai
-        key = _secret("GEMINI_API_KEY")
-        if not key: return
-        genai.configure(api_key=key)
-        try:
-            m = genai.GenerativeModel("gemini-1.5-flash", system_instruction=system or None)
-            for chunk in m.generate_content(prompt, stream=True):
-                if chunk.text: yield chunk.text
-        except Exception as flash_err:
-            logger.warning(f"Gemini 1.5 Flash stream failed: {flash_err}. Trying gemini-pro fallback.")
-            m = genai.GenerativeModel("gemini-pro", system_instruction=system or None)
-            for chunk in m.generate_content(prompt, stream=True):
-                if chunk.text: yield chunk.text
-    except Exception as e:
-        logger.warning(f"Gemini stream failed: {e}")
+    res = _call_gemini_http(prompt, system, 1024)
+    if res:
+        yield res
 
 def _call_ai(prompt, system="", max_tokens=1024):
     return _call_gemini(prompt, system, max_tokens)
@@ -255,6 +282,8 @@ class AIAssistant:
                     country = "India"
                 elif any(w in words for w in ["singapore", "sg"]):
                     country = "Singapore"
+                elif any(w in words for w in ["malaysia", "my", "ringgit", "rm"]) or "malaysia" in q:
+                    country = "Malaysia"
                     
                 # 3. Query Supabase Database First (Dynamic lookup)
                 salary_data = None
@@ -368,23 +397,13 @@ class AIVisualEvaluator:
             return self._fallback()
             
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=key)
-            
             prompt = _VISUAL_PROMPT.format(font_metadata=str(font_metadata)[:4000] if font_metadata else "Not available")
-            
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            response = model.generate_content([
-                prompt,
-                {"mime_type": "image/png", "data": image_bytes}
-            ], generation_config={"max_output_tokens": 1024, "temperature": 0.2})
-            
-            if response.text:
-                clean = response.text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            res_text = _call_gemini_http(prompt, "", 1024, image_bytes)
+            if res_text:
+                clean = res_text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
                 parsed = json.loads(clean)
                 parsed["_source"] = "gemini_vision"
                 return parsed
-                
         except Exception as e:
             logger.warning(f"Gemini Vision assessment failed: {e}")
             
