@@ -153,3 +153,16 @@ create table public.system_logs (
 alter table public.system_logs enable row level security;
 -- Only admin should see logs? For now, let's keep it restricted.
 -- create policy "Admins read logs" ... 
+
+-- 9. ROLE SALARIES (Compensation Mapping)
+-- -----------------------------------------------------------------------------
+create table public.role_salaries (
+  id uuid default gen_random_uuid() primary key,
+  role_slug text not null unique references public.job_categories(slug) on delete cascade,
+  salary_data jsonb not null default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+
+alter table public.role_salaries enable row level security;
+create policy "Read access for all" on role_salaries for select using (true);
+

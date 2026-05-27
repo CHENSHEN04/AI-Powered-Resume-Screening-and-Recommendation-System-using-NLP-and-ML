@@ -328,3 +328,54 @@ class ResumeParser:
         
         # Cap confidence at 1.0
         return min(1.0, confidence)
+
+    def convert_pdf_to_image(self, file_bytes: bytes) -> Optional[bytes]:
+        """
+        Render the first page of the PDF to a PNG byte array in memory.
+        """
+        import fitz
+        from io import BytesIO
+        
+        try:
+            doc = fitz.open(stream=BytesIO(file_bytes), filetype="pdf")
+            if len(doc) == 0:
+                return None
+            page = doc[0]  # Render first page
+            pix = page.get_pixmap(dpi=150)  # High-quality rendering
+            png_bytes = pix.tobytes("png")
+            doc.close()
+            return png_bytes
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to render PDF to PNG: {e}")
+            return None
+
+    def extract_font_metadata(self, file_bytes: bytes) -> list:
+        """
+        Extract detailed text formatting, fonts, sizes and positions.
+        """
+        import fitz
+        from io import BytesIO
+        
+        metadata = []
+        try:
+            doc = fitz.open(stream=BytesIO(file_bytes), filetype="pdf")
+            if len(doc) > 0:
+                page = doc[0]  # First page
+                blocks = page.get_text("dict")["blocks"]
+                for b in blocks:
+                    if b.get("type") == 0:  # Text block
+                        for line in b["lines"]:
+                            for span in line["spans"]:
+                                text = span["text"].strip()
+                                if len(text) > 2:  # Ignore trivial characters
+                                    metadata.append({
+                                        "text": text,
+                                        "font": span["font"],
+                                        "size": round(span["size"], 1),
+                                        "bbox": [round(x, 1) for x in span["bbox"]]
+                                    })
+            doc.close()
+        except Exception:
+            pass
+        return metadata

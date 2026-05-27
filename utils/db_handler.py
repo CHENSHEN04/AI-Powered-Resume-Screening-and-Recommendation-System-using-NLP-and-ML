@@ -16,6 +16,20 @@ class DatabaseManager:
     
     def __init__(self):
         self.supabase: Optional[Client] = self._init_client()
+        self.sync_auth_session()
+
+    def sync_auth_session(self):
+        """Sync active session access token with PostgREST headers to guarantee RLS works."""
+        if not self.supabase: return
+        try:
+            session = self.supabase.auth.get_session()
+            if session:
+                if hasattr(session, "access_token") and session.access_token:
+                    self.supabase.postgrest.auth(session.access_token)
+                elif isinstance(session, dict) and "access_token" in session and session["access_token"]:
+                    self.supabase.postgrest.auth(session["access_token"])
+        except Exception:
+            pass
         
     def _init_client(self) -> Optional[Client]:
         """Initialize Supabase client using secrets."""
@@ -40,6 +54,8 @@ class DatabaseManager:
                 "password": password, 
                 "options": options
             })
+            if res and hasattr(res, "session") and res.session:
+                self.supabase.postgrest.auth(res.session.access_token)
             # Profile creation is now handled by the SQL Trigger (on_auth_user_created)
             return res, None
         except Exception as e:
@@ -49,7 +65,10 @@ class DatabaseManager:
         """Log in an existing user."""
         if not self.supabase: return None, "Database not connected"
         try:
-            return self.supabase.auth.sign_in_with_password({"email": email, "password": password}), None
+            res = self.supabase.auth.sign_in_with_password({"email": email, "password": password})
+            if res and hasattr(res, "session") and res.session:
+                self.supabase.postgrest.auth(res.session.access_token)
+            return res, None
         except Exception as e:
             return None, str(e)
 
@@ -58,11 +77,35 @@ class DatabaseManager:
         if self.supabase:
             return self.supabase.auth.sign_out()
 
+    def reset_password(self, email: str):
+        """Send password reset email to a user."""
+        if not self.supabase: return None, "Database not connected"
+        try:
+            # Send password reset request via Supabase Auth with redirect option
+            options = {"redirect_to": "http://localhost:8501"}
+            return self.supabase.auth.reset_password_for_email(email, options=options), None
+        except Exception as e:
+            return None, str(e)
+
     def sign_in_anonymously(self):
         """Create an anonymous session."""
         if not self.supabase: return None, "Database not connected"
         try:
-            return self.supabase.auth.sign_in_anonymously(), None
+            res = self.supabase.auth.sign_in_anonymously()
+            if res and hasattr(res, "session") and res.session:
+                self.supabase.postgrest.auth(res.session.access_token)
+            return res, None
+        except Exception as e:
+            return None, str(e)
+
+    def exchange_code(self, code: str):
+        """Exchange PKCE code for a session and sync headers."""
+        if not self.supabase: return None, "Database not connected"
+        try:
+            res = self.supabase.auth.exchange_code_for_session({"auth_code": code})
+            if res and hasattr(res, "session") and res.session:
+                self.supabase.postgrest.auth(res.session.access_token)
+            return res, None
         except Exception as e:
             return None, str(e)
 
@@ -122,14 +165,18 @@ class DatabaseManager:
             if response.data:
                 resume_id = response.data[0]["id"]
                 
-                # 2. Insert Skills
-                skills_entries = [
-                    {"resume_id": resume_id, "skill_name": s["name"], "category": s["category"]}
-                    for s in analysis_data.get("skills", [])
-                ]
-                
-                if skills_entries:
-                    self.supabase.table("resume_skills").insert(skills_entries).execute()
+                # 2. Insert Skills (inside independent try-except to avoid aborting the save if RLS fails)
+                try:
+                    skills_entries = [
+                        {"resume_id": resume_id, "skill_name": s["name"], "category": s["category"]}
+                        for s in analysis_data.get("skills", [])
+                    ]
+                    
+                    if skills_entries:
+                        self.supabase.table("resume_skills").insert(skills_entries).execute()
+                except Exception as skill_err:
+                    import logging
+                    logging.getLogger(__name__).warning(f"Failed to save resume skills keyword detail: {skill_err}")
                     
                 return resume_id
         except Exception as e:
@@ -148,7 +195,20 @@ class DatabaseManager:
                 .order("created_at", desc=True)\
                 .execute().data
         except Exception as e:
-            return []
+            # Fallback: Query resumes only without relation to guarantee display if relation select is restricted
+            try:
+                res = self.supabase.table("resumes")\
+                    .select("*")\
+                    .eq("user_id", user_id)\
+                    .order("created_at", desc=True)\
+                    .execute()
+                data = res.data or []
+                for item in data:
+                    if "resume_skills" not in item:
+                        item["resume_skills"] = []
+                return data
+            except Exception:
+                return []
 
     def get_previous_version(self, user_id: str, filename: str) -> Optional[Dict]:
         """
@@ -382,3 +442,24 @@ class DatabaseManager:
         except Exception as e:
             # Fallback to console if DB logging fails
             print(f"FAILED TO LOG TO DB: {e}")
+
+    def get_role_salary(self, role_slug: str) -> Optional[Dict[str, str]]:
+        """
+        Fetch country-specific salary data for a given role slug.
+        Returns a dict mapping countries/default to salary strings, or None on failure/missing.
+        """
+        if not self.supabase or not role_slug:
+            return None
+            
+        try:
+            res = self.supabase.table("role_salaries")\
+                .select("salary_data")\
+                .eq("role_slug", role_slug.lower().strip())\
+                .execute()
+                
+            if res.data:
+                return res.data[0].get("salary_data")
+            return None
+        except Exception:
+            # Graceful failure - silent fallback to local JSON
+            return None

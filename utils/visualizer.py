@@ -109,15 +109,19 @@ class Visualizer:
         ))
         fig.update_layout(
             polar=dict(
+                bgcolor="rgba(17, 17, 21, 0.6)", # Translucent dark circle matching the theme
                 radialaxis=dict(
                     visible=True,
                     range=[0, 100],
                     ticksuffix="%",
                     showticklabels=True,
-                    tickfont=dict(size=9),
-                    gridcolor="rgba(255,255,255,0.1)",
+                    tickfont=dict(size=10, color="#A1A1AA"), # Highly visible grey for percentage increments
+                    gridcolor="rgba(255, 255, 255, 0.12)",
                 ),
-                angularaxis=dict(tickfont=dict(size=10)),
+                angularaxis=dict(
+                    tickfont=dict(size=11, color="#FAFAFA"), # Crisp white for outer axis labels
+                    gridcolor="rgba(255, 255, 255, 0.12)",
+                ),
             ),
             showlegend=False,
             margin=dict(l=60, r=60, t=40, b=40),

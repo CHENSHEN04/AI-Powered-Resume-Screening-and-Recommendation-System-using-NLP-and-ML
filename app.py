@@ -123,6 +123,11 @@ def render_sidebar():
         user = st.session_state.get("user")
         is_anon = st.session_state.get("is_anonymous", False)
 
+        if not user:
+            st.info("👋 Welcome!")
+            st.caption("Please sign in or continue as guest in the main window to get started.")
+            return db
+
         if user and not is_anon:
             st.success(f"✅ {user.email}")
             if st.button("🚪 Log Out", use_container_width=True):
@@ -169,16 +174,34 @@ def render_sidebar():
                             st.error(err)
                         else:
                             st.success("📧 Verification email sent!")
+            
+            if auth_mode == "Login":
+                with st.expander("🔑 Forgot Password?"):
+                    reset_email = st.text_input("Enter email to reset password", key="sidebar_reset_email")
+                    if st.button("Send Reset Link", key="sidebar_reset_btn", use_container_width=True):
+                        if reset_email:
+                            _, err = db.reset_password(reset_email)
+                            if err:
+                                st.error(f"❌ {err}")
+                            else:
+                                st.success("✉️ Password reset link sent!")
+                        else:
+                            st.warning("Please enter email.")
 
         st.markdown("---")
         stages = {"upload": "1️⃣ Upload", "teaser": "2️⃣ Preview",
                   "review": "3️⃣ Review", "dashboard": "4️⃣ Dashboard"}
         current = st.session_state["app_stage"]
+        has_analysis = st.session_state.get("gap_analysis") is not None
+        
         for key, label in stages.items():
             if key == current:
-                st.markdown(f"**▶ {label}**")
+                st.button(f"👉 {label}", key=f"nav_{key}", use_container_width=True, type="primary", disabled=True)
             else:
-                st.caption(f"  {label}")
+                disabled = (key != "upload" and not has_analysis)
+                if st.button(label, key=f"nav_{key}", use_container_width=True, disabled=disabled):
+                    st.session_state["app_stage"] = key
+                    st.rerun()
 
         if st.session_state["app_stage"] != "upload":
             st.markdown("---")
@@ -355,7 +378,6 @@ def show_role_selector_dialog(file_bytes, filename, jd_text):
                         st.session_state["similar_role_found"] = None
                         st.session_state["similar_role_slug"] = None
                         # Run pipeline
-                        st.dialog_close()
                         _run_analysis_pipeline(file_bytes, filename, jd_text)
                 with c2:
                     if st.button("No, this is a distinct new role", use_container_width=True):
@@ -386,7 +408,6 @@ def show_role_selector_dialog(file_bytes, filename, jd_text):
                             st.session_state["similar_role_found"] = None
                             st.session_state["similar_role_slug"] = None
                             # Run pipeline
-                            st.dialog_close()
                             _run_analysis_pipeline(file_bytes, filename, jd_text)
             else:
                 # No similar role found - proceed directly to AI generation
@@ -417,7 +438,6 @@ def show_role_selector_dialog(file_bytes, filename, jd_text):
                         st.session_state["similar_role_found"] = None
                         st.session_state["similar_role_slug"] = None
                         # Run pipeline
-                        st.dialog_close()
                         _run_analysis_pipeline(file_bytes, filename, jd_text)
                         
     else:
@@ -432,7 +452,6 @@ def show_role_selector_dialog(file_bytes, filename, jd_text):
         
         if st.button("🚀 Start AI Analysis", type="primary", use_container_width=True):
             st.session_state["target_role"] = chosen_slug
-            st.dialog_close()
             _run_analysis_pipeline(file_bytes, filename, jd_text)
 
 
@@ -454,6 +473,19 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = ""):
         return
 
     st.session_state["parse_result"] = parse_result
+
+    # 1b. Render PDF to image & extract font metadata for Visual Polish Scanner
+    if filename.lower().endswith(".pdf"):
+        progress.progress(18, text="✨ Scanning visual layout & typography...")
+        try:
+            st.session_state["resume_image"] = parser.convert_pdf_to_image(file_bytes)
+            st.session_state["font_metadata"] = parser.extract_font_metadata(file_bytes)
+        except Exception as e:
+            st.session_state["resume_image"] = None
+            st.session_state["font_metadata"] = None
+    else:
+        st.session_state["resume_image"] = None
+        st.session_state["font_metadata"] = None
 
     if parse_result.confidence < 0.3 or len(parse_result.text.strip()) < 100:
         st.session_state["app_stage"] = "builder"
@@ -565,6 +597,22 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = ""):
         except Exception as e:
             st.warning(f"AI feedback unavailable: {e}")
 
+    # 8b. Run Visual Aesthetic Scanner
+    if st.session_state.get("resume_image") is not None:
+        progress.progress(90, text="✨ Auditing resume layout aesthetics...")
+        try:
+            from utils.ai_assistant import AIVisualEvaluator
+            evaluator = AIVisualEvaluator()
+            visual_analysis = evaluator.evaluate(
+                st.session_state["resume_image"],
+                st.session_state.get("font_metadata")
+            )
+            st.session_state["visual_analysis"] = visual_analysis
+        except Exception as e:
+            st.warning(f"Visual audit unavailable: {e}")
+    else:
+        st.session_state["visual_analysis"] = None
+
     # 9. Growth tracking
     progress.progress(93, text="📈 Calculating growth...")
     from utils.growth_tracker import GrowthTracker
@@ -639,10 +687,10 @@ def render_teaser_stage():
             st.markdown("""
 | Component | Weight | Your Score | Contribution |
 |-----------|--------|-----------|--------------|
-| BERT Semantic Similarity | 50% | {bert:.1f}% | {bert_c:.1f}% |
-| Skill Keyword Overlap | 30% | {skill:.1f}% | {skill_c:.1f}% |
-| SVM Role Confidence | 10% | {svm:.1f}% | {svm_c:.1f}% |
-| Education Match | 10% | {edu:.1f}% | {edu_c:.1f}% |
+| Profile & Job Alignment | 50% | {bert:.1f}% | {bert_c:.1f}% |
+| Technical Skills Match | 30% | {skill:.1f}% | {skill_c:.1f}% |
+| Industry Target Accuracy | 10% | {svm:.1f}% | {svm_c:.1f}% |
+| Academic Background Alignment | 10% | {edu:.1f}% | {edu_c:.1f}% |
 | **Total** | **100%** | | **{total:.1f}%** |
 
 **Thresholds:** 🟢 Strong ≥ 80% &nbsp;|&nbsp; 🟡 Moderate ≥ 55% &nbsp;|&nbsp; 🔴 Weak < 55%
@@ -657,7 +705,7 @@ def render_teaser_stage():
                 edu_c  = comps.get("education_match", 0),
                 total  = score_result.get("final_score", 0),
             ))
-            st.caption("SVM confidence is 0% on first run while the BERT model warms up. Re-run the analysis to get the full score.")
+            st.caption("Industry accuracy score starts at 0% on your first run while systems warm up. Re-run analysis to see the updated score.")
 
     # Quick Stats
     st.markdown("<br>", unsafe_allow_html=True)
@@ -699,13 +747,17 @@ def render_teaser_stage():
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("---")
 
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     with c1:
-        if st.button("✏️ Review & Edit Extracted Data", use_container_width=True):
-            st.session_state["app_stage"] = "review"
+        if st.button("⬅️ Back to Upload", use_container_width=True):
+            st.session_state["app_stage"] = "upload"
             st.rerun()
     with c2:
-        if st.button("📊 Go to Full Dashboard", type="primary", use_container_width=True):
+        if st.button("✏️ Edit Extracted Data", use_container_width=True):
+            st.session_state["app_stage"] = "review"
+            st.rerun()
+    with c3:
+        if st.button("📊 Go to Dashboard", type="primary", use_container_width=True):
             st.session_state["app_stage"] = "dashboard"
             st.rerun()
 
@@ -751,13 +803,31 @@ def render_review_stage():
         st.markdown("### 🧠 Extracted Data")
 
         st.markdown("#### 🎯 Predicted Target Role")
-        from utils.skill_extractor import SkillExtractor
-        extractor = SkillExtractor()
-        categories = list(extractor.standards.get("job_categories", {}).keys())
-        cat_display = [c.replace("_", " ").title() for c in categories]
+        db = _get_db()
+        from utils.gap_analyzer import GapAnalyzer
+        analyzer = GapAnalyzer(db)
+        
+        # Load all standard and custom categories dynamically
+        known_roles = analyzer.get_all_known_roles() # list of (title, slug)
+        
+        # Also include any custom roles saved in session state (offline fallback)
+        known_slugs = {slug for title, slug in known_roles}
+        for k in st.session_state.keys():
+            if k.startswith("custom_standards_"):
+                slug = k.removeprefix("custom_standards_")
+                if slug not in known_slugs:
+                    title = slug.replace("_", " ").title()
+                    known_roles.append((title, slug))
+                    known_slugs.add(slug)
+                    
+        # Sort alphabetically
+        known_roles = sorted(known_roles, key=lambda x: x[0])
+        
+        categories = [r[1] for r in known_roles]
+        cat_display = [r[0] for r in known_roles]
 
         current_idx = 0
-        target_lower = target_role.lower().replace(" ", "_")
+        target_lower = target_role.lower().replace(" ", "_") if target_role else ""
         for i, c in enumerate(categories):
             if c == target_lower or c == target_role:
                 current_idx = i
@@ -891,6 +961,12 @@ def render_dashboard_stage():
 
     role_display = target_role.replace("_", " ").title()
     st.markdown(f"## 🎯 Career Dashboard — {role_display}")
+    
+    col_nav1, col_nav2 = st.columns([1, 4])
+    with col_nav1:
+        if st.button("⬅️ Back to Review", use_container_width=True):
+            st.session_state["app_stage"] = "review"
+            st.rerun()
 
     if jd_text:
         st.caption("📋 Analysis based on your provided job description")
@@ -945,15 +1021,58 @@ def render_dashboard_stage():
         with st.expander("⚖️ Score Breakdown (How this was calculated)", expanded=False):
             comps = score_result["component_scores"]
             sc1, sc2, sc3, sc4 = st.columns(4)
-            sc1.metric("BERT Semantic (50%)", f"{comps['bert_semantic']:.1f}%")
-            sc2.metric("Skill Overlap (30%)", f"{comps['skill_overlap']:.1f}%")
-            sc3.metric("SVM Confidence (10%)", f"{comps['svm_confidence']:.1f}%")
-            sc4.metric("Education Match (10%)", f"{comps['education_match']:.1f}%")
-            st.caption("Final score = BERT×50% + Skills×30% + SVM×10% + Education×10%")
+            sc1.metric("Profile Alignment (50%)", f"{comps['bert_semantic']:.1f}%")
+            sc2.metric("Skills Match (30%)", f"{comps['skill_overlap']:.1f}%")
+            sc3.metric("Industry Accuracy (10%)", f"{comps['svm_confidence']:.1f}%")
+            sc4.metric("Academic Alignment (10%)", f"{comps['education_match']:.1f}%")
+            st.caption("Final score = Alignment×50% + Skills Match×30% + Industry Accuracy×10% + Academic Alignment×10%")
+            
+        # Sleek Glassmorphic Roadmap
+        st.markdown("""
+        <div class="glass-panel" style="padding: 1.7rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); background: rgba(17,17,21,0.65); margin-top: 1rem; margin-bottom: 1rem;">
+            <h4 style="margin-top: 0; color: #43E97B; font-size: 1.3rem; display: flex; align-items: center; gap: 8px;">🛠️ Actionable Roadmap to Boost Your Score</h4>
+            <p style="color: #A1A1AA; font-size: 1.0rem; margin-bottom: 1.3rem; line-height: 1.6;">
+                Lower scores occur when your resume's language lacks context, specific technical terms, or clear structure. Follow this customized blueprint to improve your profile:
+            </p>
+            <ul style="list-style-type: none; padding-left: 0; margin-bottom: 0;">
+                <li style="margin-bottom: 1.3rem; padding-bottom: 1.0rem; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                    <div style="font-weight: 700; color: #FAFAFA; font-size: 1.1rem; margin-bottom: 0.3rem;">🧠 1. Boost Profile & Job Alignment (50% weight)</div>
+                    <div style="color: #D1D1D6; font-size: 0.95rem; line-height: 1.55; margin-left: 1.5rem;">
+                        <strong>Why it is low:</strong> Your descriptions might be too brief, use passive/generic terms, or lack context matching the job description's phrasing.
+                        <br><span style="color: #43E97B; font-weight: 600;">💡 Core Action:</span> Elaborate on your accomplishments using the <span style="color: #6C63FF; font-weight: 700;">STAR method</span> (Situation, Task, Action, Result). Mimic active verbs (e.g. <em>orchestrated</em>, <em>engineered</em>, <em>streamlined</em>) from the Job Description.
+                    </div>
+                </li>
+                <li style="margin-bottom: 1.3rem; padding-bottom: 1.0rem; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                    <div style="font-weight: 700; color: #FAFAFA; font-size: 1.1rem; margin-bottom: 0.3rem;">🎯 2. Boost Technical Skills Match (30% weight)</div>
+                    <div style="color: #D1D1D6; font-size: 0.95rem; line-height: 1.55; margin-left: 1.5rem;">
+                        <strong>Why it is low:</strong> You are missing specific technical tools, programming languages, or platforms required by the employer.
+                        <br><span style="color: #43E97B; font-weight: 600;">💡 Core Action:</span> Go to the <span style="color: #6C63FF; font-weight: 700;">Skill Gaps</span> tab below and check the list of <span style="color: #FF6584; font-weight: 700;">❌ Missing Skills</span>. Weave these exact keywords naturally into your resume’s skill inventory and job bullets.
+                    </div>
+                </li>
+                <li style="margin-bottom: 1.3rem; padding-bottom: 1.0rem; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                    <div style="font-weight: 700; color: #FAFAFA; font-size: 1.1rem; margin-bottom: 0.3rem;">💼 3. Boost Industry Target Accuracy (10% weight)</div>
+                    <div style="color: #D1D1D6; font-size: 0.95rem; line-height: 1.55; margin-left: 1.5rem;">
+                        <strong>Why it is low:</strong> Your overall profile reads too broadly or matches multiple professional categories, dropping classifier confidence for your target role.
+                        <br><span style="color: #43E97B; font-weight: 600;">💡 Core Action:</span> Open your resume with a clear <span style="color: #6C63FF; font-weight: 700;">professional summary header</span> containing your target job title (e.g., <em>"Data Analyst with 2+ years of experience..."</em>). Focus your experience descriptions purely on tasks specific to this professional domain. <em>(Note: Accuracy score starts at 0% on your first run. Try running a second time to warm up systems!)</em>.
+                    </div>
+                </li>
+                <li style="margin-bottom: 0;">
+                    <div style="font-weight: 700; color: #FAFAFA; font-size: 1.1rem; margin-bottom: 0.3rem;">🎓 4. Boost Academic Background Alignment (10% weight)</div>
+                    <div style="color: #D1D1D6; font-size: 0.95rem; line-height: 1.55; margin-left: 1.5rem;">
+                        <strong>Why it is low:</strong> Your educational field (major or degree title) is missing or parsed differently than standard major profiles.
+                        <br><span style="color: #43E97B; font-weight: 600;">💡 Core Action:</span> Clearly define your <span style="color: #6C63FF; font-weight: 700;">degree name and field of study</span> under your education section (e.g., <em>"B.S. in Computer Science"</em> or <em>"M.S. in Business Analytics"</em>), matching conventional academic naming.
+                    </div>
+                </li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
 
     # ── Section scores bar chart ──
     if jd_match and jd_match.get("section_scores"):
-        with st.expander("📊 Section-Level BERT Scores", expanded=True):
+        with st.expander("📊 Section-Level Alignment Scores", expanded=True):
+            st.markdown("""
+            This chart displays how closely each distinct section of your resume (Education, Experience, Skills, and Summary) semantically aligns with the context and intent of the Job Description. **Higher bars indicate stronger relevance and a closer contextual match to the employer's expectations.**
+            """)
             sec_df = pd.DataFrame(
                 list(jd_match["section_scores"].items()),
                 columns=["Section", "Score (%)"]
@@ -1003,8 +1122,8 @@ def render_dashboard_stage():
     st.markdown("---")
 
     # ── Tabs ──
-    tab_labels = ["✅ Your Skills", "❌ Skill Gaps", "🤖 AI Feedback", "🎓 Learning Plan", "💬 AI Coach"]
-    tab_skills, tab_gaps, tab_feedback, tab_plan, tab_ai = st.tabs(tab_labels)
+    tab_labels = ["✅ Your Skills", "❌ Skill Gaps", "🤖 AI Feedback", "🎨 Visual Polish", "🎓 Learning Plan", "💬 AI Coach"]
+    tab_skills, tab_gaps, tab_feedback, tab_visual, tab_plan, tab_ai = st.tabs(tab_labels)
 
     with tab_skills:
         if skill_data["all_skills"]:
@@ -1064,6 +1183,8 @@ def render_dashboard_stage():
             _icon, _label = _provider_labels.get(source, ("ℹ️", f"Provider: {source}"))
             if source == "rule_based":
                 st.info(f"{_icon} {_label}")
+                if st.session_state.get("gemini_error"):
+                    st.error(f"⚠️ **Gemini API Error Details:** {st.session_state['gemini_error']}")
             else:
                 st.success(f"{_icon} {_label}")
 
@@ -1086,10 +1207,170 @@ def render_dashboard_stage():
                 st.markdown("#### 💡 Improvement Suggestions")
                 for i, tip in enumerate(ai_feedback["improvement_suggestions"], 1):
                     st.markdown(f"**{i}.** {tip}")
+                    
+            # Interview Questions (fufilling 3.4.3 research specification)
+            if ai_feedback.get("interview_questions"):
+                st.markdown("<br>#### 🎯 Custom Interview Prep", unsafe_allow_html=True)
+                st.caption("Customized technical and behavioral questions based on your profile and gaps:")
+                for i, q in enumerate(ai_feedback["interview_questions"], 1):
+                    st.markdown(f"""
+                    <div class="glass-panel" style="padding:0.8rem; margin-bottom: 0.6rem; border-left: 3px solid #43E97B; background: rgba(255,255,255,0.02)">
+                        <strong>Q{i}:</strong> {q}
+                    </div>
+                    """, unsafe_allow_html=True)
         elif not jd_text:
             st.info("💡 Paste a job description on the upload page to get AI recruiter feedback.")
         else:
             st.warning("AI feedback was not generated. Check your ANTHROPIC_API_KEY in Streamlit secrets.")
+
+    with tab_visual:
+        st.markdown("### 🎨 Resume Visual Polish Scanner")
+        
+        if st.session_state.get("resume_image") is None:
+            st.info("ℹ️ Visual Polish Scanner is only available for PDF resumes. Please upload a PDF resume file to enable interactive visual layout analysis.")
+        elif not st.session_state.get("visual_analysis"):
+            st.warning("⚠️ Visual analysis report was not generated. Ensure your GEMINI_API_KEY is configured in Streamlit secrets.")
+        else:
+            visual_analysis = st.session_state["visual_analysis"]
+            
+            # 1. Scorecard Columns
+            c_score1, c_score2, c_score3 = st.columns(3)
+            with c_score1:
+                st.metric("✨ Visual Polish Score", f"{visual_analysis.get('visual_polish_score', 0)}/100")
+            with c_score2:
+                st.metric("📏 Style Consistency", f"{visual_analysis.get('consistency_score', 0)}/100")
+            with c_score3:
+                st.metric("👀 Scannability & Hierarchy", f"{visual_analysis.get('hierarchy_score', 0)}/100")
+                
+            # 2. Layout Recruiter Summary
+            st.markdown("#### 💡 Expert Recruiter Summary")
+            st.markdown(f"""
+            <div class="glass-panel" style="padding:1.1rem; border-left:4px solid #43E97B; margin-bottom: 1.5rem;">
+                {visual_analysis.get('recruiter_notes', 'No layout notes available.')}
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # 3. Split-view: Image Hotspots vs Red Flags List
+            vis_left, vis_right = st.columns([5, 4], gap="large")
+            
+            with vis_left:
+                st.markdown("#### 📄 Interactive Resume Hotspots")
+                st.caption("Hover over the transparent-red highlight boxes on your resume to inspect specific design issues:")
+                
+                # Dynamic HTML component injection
+                try:
+                    import base64
+                    img_bytes = st.session_state["resume_image"]
+                    img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+                    
+                    html_content = """
+                    <style>
+                    .resume-wrapper {
+                        position: relative;
+                        display: inline-block;
+                        width: 100%;
+                        max-width: 650px;
+                        border-radius: 8px;
+                        overflow: hidden;
+                        border: 1px solid rgba(255,255,255,0.15);
+                        background: #111115;
+                        box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+                    }
+                    .resume-image {
+                        display: block;
+                        width: 100%;
+                        height: auto;
+                    }
+                    .hotspot {
+                        position: absolute;
+                        background: rgba(255, 101, 132, 0.18);
+                        border: 1.5px dashed rgba(255, 101, 132, 0.7);
+                        border-radius: 4px;
+                        cursor: pointer;
+                        transition: all 0.3s ease;
+                        z-index: 10;
+                    }
+                    .hotspot:hover {
+                        background: rgba(255, 101, 132, 0.38);
+                        border: 1.5px solid rgba(255, 101, 132, 1);
+                        box-shadow: 0 0 15px rgba(255, 101, 132, 0.7);
+                        z-index: 100;
+                    }
+                    .hotspot .tooltip {
+                        visibility: hidden;
+                        position: absolute;
+                        bottom: 110%;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        background: rgba(17, 17, 21, 0.98);
+                        color: #FAFAFA;
+                        padding: 10px 14px;
+                        border-radius: 6px;
+                        font-size: 11.5px;
+                        width: 240px;
+                        line-height: 1.45;
+                        border: 1px solid rgba(255, 101, 132, 0.5);
+                        box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+                        z-index: 999;
+                        opacity: 0;
+                        transition: opacity 0.25s ease-in-out;
+                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                        pointer-events: none;
+                    }
+                    .hotspot:hover .tooltip {
+                        visibility: visible;
+                        opacity: 1;
+                    }
+                    .hotspot .tooltip-title {
+                        font-weight: 700;
+                        color: #FF6584;
+                        margin-bottom: 4px;
+                        font-size: 12.5px;
+                    }
+                    </style>
+                    <div class="resume-wrapper">
+                        <img src="data:image/png;base64,{img_base64}" class="resume-image" />
+                    """
+                    
+                    red_flags = visual_analysis.get("red_flags", [])
+                    for flag in red_flags:
+                        box = flag.get("box_2d")
+                        if box and len(box) == 4:
+                            ymin, xmin, ymax, xmax = box
+                            top = ymin / 10.0
+                            left = xmin / 10.0
+                            height = (ymax - ymin) / 10.0
+                            width = (xmax - xmin) / 10.0
+                            
+                            issue_esc = flag.get("issue", "").replace('"', '&quot;')
+                            reason_esc = flag.get("reason", "").replace('"', '&quot;')
+                            
+                            html_content += f"""
+                            <div class="hotspot" style="top: {top}%; left: {left}%; width: {width}%; height: {height}%;">
+                                <div class="tooltip">
+                                    <div class="tooltip-title">⚠️ {issue_esc}</div>
+                                    <div>{reason_esc}</div>
+                                </div>
+                            </div>
+                            """
+                    html_content += "</div>"
+                    st.components.v1.html(html_content.format(img_base64=img_b64), height=820)
+                except Exception as html_err:
+                    st.error(f"Failed to render interactive image: {html_err}")
+                    
+            with vis_right:
+                st.markdown("#### 🚨 Layout Formatting Audit")
+                red_flags = visual_analysis.get("red_flags", [])
+                if red_flags:
+                    for i, flag in enumerate(red_flags, 1):
+                        st.markdown(f"""
+                        <div class="glass-panel" style="padding:0.9rem; margin-bottom: 0.8rem; border-left:3px solid #FF6584; background:rgba(255,101,132,0.02)">
+                            <strong style="color:#FF6584">⚠️ {i}. {flag.get('issue')}</strong>
+                            <div style="font-size:0.86rem; color:#A1A1AA; margin-top:0.3rem;">{flag.get('reason')}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.success("🎉 No layout formatting issues detected! Your resume design is flawless.")
 
     with tab_plan:
         st.markdown("### 📚 Recommended Learning Paths")
@@ -1205,6 +1486,19 @@ def render_welcome_stage():
                         st.toast(f"Welcome back, {res.user.email}! 👋", icon="✅")
                         st.rerun()
 
+            with st.expander("🔑 Forgot Password?"):
+                reset_email = st.text_input("Enter email to receive reset link", key="welcome_reset_email")
+                if st.button("Send Reset Link", key="welcome_reset_btn", use_container_width=True):
+                    if reset_email:
+                        db = _get_db()
+                        _, err = db.reset_password(reset_email)
+                        if err:
+                            st.error(f"❌ {err}")
+                        else:
+                            st.success("✉️ Password reset link sent to your email!")
+                    else:
+                        st.warning("Please enter your email address first.")
+
         with tabs[1]:
             with st.form("welcome_signup_form"):
                 email = st.text_input("Email Address", placeholder="name@domain.com", key="welcome_signup_email")
@@ -1243,6 +1537,48 @@ def render_welcome_stage():
 # ==============================================================================
 def main():
     db = render_sidebar()
+    
+    # --- PKCE Password Reset Handler ---
+    if "code" in st.query_params:
+        code = st.query_params["code"]
+        res, err = db.exchange_code(code)
+        if err:
+            st.error(f"❌ Reset Link Auth Failed: {err}")
+        else:
+            st.session_state["user"] = res.user
+            st.session_state["is_anonymous"] = False
+            st.session_state["reset_password_mode"] = True
+            # Clear params so we don't repeat exchange on rerun
+            st.query_params.clear()
+            st.toast("🔑 Authenticated via recovery link! Please set your new password.", icon="🔑")
+            st.rerun()
+
+    # --- Reset Password Form Mode ---
+    if st.session_state.get("reset_password_mode"):
+        st.markdown("""
+        <div class="glass-panel" style="padding: 2rem; border-radius: 16px; border: 1px solid rgba(255,255,255,0.08); background: rgba(17,17,21,0.6); margin-top: 2rem; margin-bottom: 2rem;">
+            <h3 style="color: #6C63FF; margin-top: 0;">🔄 Reset Your Password</h3>
+            <p style="color: #A1A1AA; font-size: 0.9rem;">You have been securely authenticated via recovery link. Please choose a strong new password below.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        with st.form("reset_password_form"):
+            new_pwd = st.text_input("New Password", type="password")
+            confirm_pwd = st.text_input("Confirm New Password", type="password")
+            if st.form_submit_button("Update Password", type="primary", use_container_width=True):
+                if not new_pwd:
+                    st.error("Password cannot be empty.")
+                elif new_pwd != confirm_pwd:
+                    st.error("Passwords do not match.")
+                else:
+                    try:
+                        db.supabase.auth.update_user({"password": new_pwd})
+                        st.session_state["reset_password_mode"] = False
+                        st.success("🎉 Password updated successfully! You can now use your new password.")
+                        st.toast("Password reset successful! 🎉", icon="✅")
+                    except Exception as e:
+                        st.error(f"Failed to update password: {e}")
+        return
+
     user = st.session_state.get("user")
     
     if not user:
