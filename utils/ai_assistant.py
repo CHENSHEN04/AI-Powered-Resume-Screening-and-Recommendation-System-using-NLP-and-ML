@@ -5,7 +5,7 @@ Priority: 1) Anthropic Claude  2) Google Gemini (free)  3) Rule-based
 Setup in .streamlit/secrets.toml or .env:
   GEMINI_API_KEY = "your-key"          # free at aistudio.google.com/app/apikey
   GEMINI_MODEL = "gemini-3.5-flash"    # optional
-  ANTHROPIC_API_KEY = "your-key"       # optional, higher quality
+  ANTHROPIC_API_KEY = "your-key"       # optional, higher quality but paid
 
 Gemini is called through the official REST API, so no Gemini SDK dependency is required.
 """
