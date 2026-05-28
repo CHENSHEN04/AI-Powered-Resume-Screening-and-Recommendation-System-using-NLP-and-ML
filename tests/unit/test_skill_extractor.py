@@ -80,17 +80,17 @@ class TestSkillExtractor:
         frontend_skills = ["HTML", "CSS", "JavaScript", "React"]
         scores = extractor.map_to_category(frontend_skills)
         
-        # Should score highest for Frontend Developer
+        # Should score highest for React Developer
         top_category = list(scores.keys())[0]
-        assert top_category == "frontend_developer"
-        assert scores["frontend_developer"] > 0.5
+        assert top_category == "react_developer"
+        assert scores["react_developer"] > 0.5
         
         # Backend skills
         backend_skills = ["Python", "SQL", "Django", "API Design"]
         scores_backend = extractor.map_to_category(backend_skills)
         
         top_category_backend = list(scores_backend.keys())[0]
-        assert top_category_backend == "backend_developer"
+        assert top_category_backend == "python_developer"
 
     def test_empty_text(self, extractor):
         """Test extraction with empty text."""

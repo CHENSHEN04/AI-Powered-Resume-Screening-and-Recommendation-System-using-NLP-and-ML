@@ -307,10 +307,38 @@ def render_upload_stage():
 
         btn_label = "🚀 Analyze vs Job Description" if jd_text and len(jd_text.strip()) >= 20 else "🚀 Analyze Resume"
         if st.button(btn_label, type="primary", use_container_width=True):
+            if "gemini_error" in st.session_state:
+                del st.session_state["gemini_error"]
             st.session_state["jd_text"] = jd_text.strip()
             st.session_state["file_bytes"] = file_bytes
             st.session_state["uploaded_file_name"] = uploaded_file.name
             show_role_selector_dialog(file_bytes, uploaded_file.name, jd_text.strip())
+
+
+@st.dialog("✨ Welcome to Deep Career Coach!", width="large")
+def show_welcome_back_dialog(email):
+    st.markdown(f"""
+    <div style="text-align: center; padding: 1.5rem 1rem;">
+        <h2 style="font-size: 2.2rem; background: linear-gradient(135deg, #6C63FF, #43E97B); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 1rem;">
+            👋 Welcome Back!
+        </h2>
+        <p style="font-size: 1.1rem; color: #E4E4E7; margin-bottom: 2rem; line-height: 1.6;">
+            We are thrilled to have you back, <span style="color:#43E97B; font-weight:bold;">{email}</span>! <br>
+            Your personalized AI Career Coach is ready to scan, score, and supercharge your resume today.
+        </p>
+        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 1.5rem; margin-bottom: 2rem; text-align: left;">
+            <h4 style="color: #8F8AFF; margin-top: 0; margin-bottom: 0.75rem; font-size: 1.1rem;">🔒 Premium Member Features Active:</h4>
+            <ul style="color: #A1A1AA; line-height: 1.7; margin-bottom: 0; padding-left: 1.2rem; font-size: 0.95rem;">
+                <li>💾 <b>Save Analysis History:</b> Explicitly save resume match scores and feedback with a single click.</li>
+                <li>📈 <b>Track Growth:</b> Compare current resume scores against previous attempts dynamically.</li>
+                <li>🧠 <b>Interactive AI Recruiter:</b> Enjoy unlimited expert coaching and learning path generations.</li>
+            </ul>
+        </div>
+        <p style="color: #71717A; font-size: 0.85rem; margin-bottom: 1.5rem;">Aligns at the middle & stays as long as you want to interact!</p>
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("🚀 Let's Go!", type="primary", use_container_width=True):
+        st.rerun()
 
 
 @st.dialog("🎯 Select Targeted Job Role", width="large")
@@ -398,6 +426,27 @@ def show_role_selector_dialog(file_bytes, filename, jd_text):
                                 nice_to_have_skills=standards.get("nice_to_have_skills", [])
                             )
                             
+                            # Save dynamic salaries to Supabase and local JSON
+                            salary_ranges = standards.get("salary_ranges", {})
+                            if salary_ranges:
+                                try:
+                                    db.save_role_salary(new_slug, salary_ranges)
+                                except Exception:
+                                    pass
+                                try:
+                                    import json
+                                    import os
+                                    json_path = os.path.join("data", "salary_ranges.json")
+                                    all_salaries = {}
+                                    if os.path.exists(json_path):
+                                        with open(json_path, "r", encoding="utf-8") as f:
+                                            all_salaries = json.load(f)
+                                    all_salaries[new_slug] = salary_ranges
+                                    with open(json_path, "w", encoding="utf-8") as f:
+                                        json.dump(all_salaries, f, indent=2, ensure_ascii=False)
+                                except Exception:
+                                    pass
+                            
                             # Fallback if DB save fails
                             if not success:
                                 st.session_state[f"custom_standards_{new_slug}"] = standards
@@ -428,6 +477,27 @@ def show_role_selector_dialog(file_bytes, filename, jd_text):
                             nice_to_have_skills=standards.get("nice_to_have_skills", [])
                         )
                         
+                        # Save dynamic salaries to Supabase and local JSON
+                        salary_ranges = standards.get("salary_ranges", {})
+                        if salary_ranges:
+                            try:
+                                db.save_role_salary(new_slug, salary_ranges)
+                            except Exception:
+                                pass
+                            try:
+                                import json
+                                import os
+                                json_path = os.path.join("data", "salary_ranges.json")
+                                all_salaries = {}
+                                if os.path.exists(json_path):
+                                    with open(json_path, "r", encoding="utf-8") as f:
+                                        all_salaries = json.load(f)
+                                all_salaries[new_slug] = salary_ranges
+                                with open(json_path, "w", encoding="utf-8") as f:
+                                    json.dump(all_salaries, f, indent=2, ensure_ascii=False)
+                            except Exception:
+                                pass
+                        
                         # Fallback if DB save fails
                         if not success:
                             st.session_state[f"custom_standards_{new_slug}"] = standards
@@ -455,16 +525,31 @@ def show_role_selector_dialog(file_bytes, filename, jd_text):
             _run_analysis_pipeline(file_bytes, filename, jd_text)
 
 
-def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = ""):
+def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = "", pre_parsed_text: str = None):
     """Run the full analysis pipeline and advance to teaser stage."""
+    if "gemini_error" in st.session_state:
+        try:
+            del st.session_state["gemini_error"]
+        except Exception:
+            pass
     db = _get_db()
     progress = st.progress(0, text="Starting analysis...")
 
     # 1. Parse
-    progress.progress(10, text="📄 Parsing resume...")
-    from utils.parser import ResumeParser
-    parser = ResumeParser()
-    parse_result = parser.parse(file_bytes, filename)
+    if pre_parsed_text:
+        from utils.parser import ParseResult
+        parse_result = ParseResult(
+            success=True,
+            text=pre_parsed_text,
+            page_count=1,
+            confidence=1.0,
+            error=None
+        )
+    else:
+        progress.progress(10, text="📄 Parsing resume...")
+        from utils.parser import ResumeParser
+        parser = ResumeParser()
+        parse_result = parser.parse(file_bytes, filename)
 
     if not parse_result.success:
         st.session_state["parse_result"] = parse_result
@@ -475,9 +560,11 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = ""):
     st.session_state["parse_result"] = parse_result
 
     # 1b. Render PDF to image & extract font metadata for Visual Polish Scanner
-    if filename.lower().endswith(".pdf"):
+    if file_bytes and filename.lower().endswith(".pdf"):
         progress.progress(18, text="✨ Scanning visual layout & typography...")
         try:
+            from utils.parser import ResumeParser
+            parser = ResumeParser()
             st.session_state["resume_image"] = parser.convert_pdf_to_image(file_bytes)
             st.session_state["font_metadata"] = parser.extract_font_metadata(file_bytes)
         except Exception as e:
@@ -623,17 +710,7 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = ""):
     st.session_state["growth_data"] = growth
 
     # 10. Save (authenticated users)
-    if is_auth:
-        db.save_resume_analysis(user.id, {
-            "filename": filename,
-            "storage_path": f"resumes/{user.id}/{filename}",
-            "parsed_text": resume_text,
-            "page_count": parse_result.page_count,
-            "confidence_score": parse_result.confidence,
-            "predicted_role": target_role,
-            "match_score": analysis["match_percentage"],
-            "skills": [{"name": s, "category": "extracted"} for s in skill_data["all_skills"]]
-        })
+    # Background auto-save removed in favor of explicit user SAVE button on Dashboard
 
     progress.progress(100, text="✅ Done!")
     time.sleep(0.3)
@@ -1016,11 +1093,38 @@ def render_dashboard_stage():
     role_display = target_role.replace("_", " ").title()
     st.markdown(f"## 🎯 Career Dashboard — {role_display}")
     
-    col_nav1, col_nav2 = st.columns([1, 4])
+    user = st.session_state.get("user")
+    is_auth = bool(user and not st.session_state.get("is_anonymous"))
+    
+    col_nav1, col_nav2, col_nav3 = st.columns([1, 1.5, 1.5])
     with col_nav1:
         if st.button("⬅️ Back to Review", use_container_width=True):
             st.session_state["app_stage"] = "review"
             st.rerun()
+    with col_nav2:
+        if is_auth:
+            if st.button("💾 Save Analysis to History", type="primary", use_container_width=True, help="Save this match assessment, skills parsed, and feedback to your personal history."):
+                with st.spinner("💾 Archiving analysis record..."):
+                    db = _get_db()
+                    filename = st.session_state.get("uploaded_file_name", "resume.pdf")
+                    parse_result = st.session_state.get("parse_result")
+                    resume_text = parse_result.text if parse_result else ""
+                    
+                    res_id = db.save_resume_analysis(user.id, {
+                        "filename": filename,
+                        "storage_path": f"resumes/{user.id}/{filename}",
+                        "parsed_text": resume_text,
+                        "page_count": parse_result.page_count if parse_result else 1,
+                        "confidence_score": parse_result.confidence if parse_result else 1.0,
+                        "predicted_role": target_role,
+                        "match_score": score_result["final_score"] if score_result else analysis["match_percentage"],
+                        "skills": [{"name": s, "category": "extracted"} for s in skill_data["all_skills"]]
+                    })
+                    if res_id:
+                        st.toast("💾 Analysis successfully saved to your history!", icon="📥")
+                        st.success("💾 Analysis saved successfully!")
+                    else:
+                        st.error("Failed to save analysis. Please try again.")
 
     if jd_text:
         st.caption("📋 Analysis based on your provided job description")
@@ -1300,7 +1404,16 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
             if source == "rule_based":
                 st.info(f"{_icon} {_label}")
                 if st.session_state.get("gemini_error"):
-                    st.error(f"⚠️ **Gemini API Error Details:** {st.session_state['gemini_error']}")
+                    cols_err = st.columns([0.85, 0.15])
+                    with cols_err[0]:
+                        st.error(f"⚠️ **Gemini API Error Details:** {st.session_state['gemini_error']}")
+                    with cols_err[1]:
+                        if st.button("Dismiss", key="clear_gemini_error_btn", use_container_width=True):
+                            try:
+                                del st.session_state["gemini_error"]
+                            except Exception:
+                                pass
+                            st.rerun()
             else:
                 st.success(f"{_icon} {_label}")
 
@@ -1587,13 +1700,75 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
     # ── History ──
     user = st.session_state.get("user")
     if user and not st.session_state.get("is_anonymous"):
-        with st.expander("📜 Your Analysis History"):
+        with st.expander("📜 Your Analysis History", expanded=True):
             db = _get_db()
             history = db.get_user_history(user.id)
             if history:
-                df = pd.DataFrame(history)
-                display_cols = [c for c in ["created_at", "filename", "predicted_role", "match_score"] if c in df.columns]
-                st.dataframe(df[display_cols] if display_cols else df, use_container_width=True)
+                st.markdown("""
+                <style>
+                .history-item {
+                    background: rgba(255, 255, 255, 0.02);
+                    border: 1px solid rgba(255, 255, 255, 0.06);
+                    border-radius: 12px;
+                    padding: 1rem;
+                    margin-bottom: 0.75rem;
+                    transition: all 0.3s ease;
+                }
+                .history-item:hover {
+                    background: rgba(255, 255, 255, 0.04);
+                    border-color: rgba(143, 138, 255, 0.3);
+                }
+                </style>
+                """, unsafe_allow_html=True)
+                
+                for idx, record in enumerate(history):
+                    c_time = record.get("created_at", "")
+                    if "T" in c_time:
+                        c_date = c_time.split("T")[0]
+                        c_time_part = c_time.split("T")[1].split(".")[0]
+                    else:
+                        c_date = c_time
+                        c_time_part = ""
+                    
+                    role_disp = record.get("predicted_role", "Unknown").replace("_", " ").title()
+                    score_val = record.get("match_score", 0)
+                    score_color = "#43E97B" if score_val >= 80 else "#ffa421" if score_val >= 55 else "#FF6584"
+                    
+                    st.markdown(f"""
+                    <div class="history-item">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                            <div>
+                                <span style="font-size: 0.85rem; color: #71717A;">📅 {c_date} {c_time_part}</span>
+                                <h5 style="margin: 0.25rem 0 0.1rem 0; color: #FAFAFA; font-size: 1.05rem;">📄 {record.get('filename', 'Unknown')}</h5>
+                                <span style="font-size: 0.9rem; color: #8F8AFF;">🎯 Target Role: <b>{role_disp}</b></span>
+                            </div>
+                            <div style="text-align: right; display: flex; align-items: center; gap: 15px;">
+                                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 0.3rem 0.8rem; border-radius: 8px;">
+                                    <span style="font-size: 0.8rem; color: #A1A1AA; display: block;">Match Score</span>
+                                    <span style="font-size: 1.15rem; font-weight: bold; color: {score_color};">{score_val:.0f}%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    cols_btn = st.columns([4, 1])
+                    with cols_btn[1]:
+                        if st.button("🔍 Load Analysis", key=f"load_history_{record.get('id', idx)}", use_container_width=True):
+                            with st.spinner("🔄 Loading historical analysis..."):
+                                st.session_state["uploaded_file_name"] = record.get("filename")
+                                st.session_state["target_role"] = record.get("predicted_role")
+                                st.session_state["sim_checked"] = False
+                                st.session_state["similar_role_found"] = None
+                                st.session_state["similar_role_slug"] = None
+                                
+                                _run_analysis_pipeline(
+                                    file_bytes=None,
+                                    filename=record.get("filename"),
+                                    jd_text="",
+                                    pre_parsed_text=record.get("parsed_text")
+                                )
+                    st.markdown("<div style='margin-bottom: 0.5rem;'></div>", unsafe_allow_html=True)
             else:
                 st.caption("No previous analyses found.")
 
@@ -1637,8 +1812,8 @@ def render_welcome_stage():
                     else:
                         st.session_state["user"] = res.user
                         st.session_state["is_anonymous"] = False
+                        st.session_state["show_login_welcome"] = True
                         _sync_session_analysis_to_db(db, res.user.id)
-                        st.toast(f"Welcome back, {res.user.email}! 👋", icon="✅")
                         st.rerun()
 
             with st.expander("🔑 Forgot Password?"):
@@ -1739,6 +1914,10 @@ def main():
     if not user:
         render_welcome_stage()
         return
+
+    if st.session_state.get("show_login_welcome"):
+        st.session_state["show_login_welcome"] = False
+        show_welcome_back_dialog(user.email)
 
     stage = st.session_state["app_stage"]
     if stage == "upload":

@@ -383,6 +383,30 @@ class DatabaseManager:
         except Exception as e:
             return False, str(e)
 
+    def save_role_salary(self, role_slug: str, salary_data: Dict[str, str]) -> bool:
+        """Save or update country-specific salary data for a given role slug."""
+        if not self.supabase or not role_slug or not salary_data:
+            return False
+        try:
+            # Check if category exists first (needs to exist to references public.job_categories(slug))
+            cat = self.supabase.table("job_categories").select("id").eq("slug", role_slug.lower().strip()).execute()
+            if not cat.data:
+                # Insert dynamic category skeleton so reference passes successfully
+                role_title = role_slug.replace("_", " ").title()
+                self.supabase.table("job_categories").insert({
+                    "slug": role_slug.lower().strip(),
+                    "title": role_title,
+                    "weights": {"required": 1.0, "recommended": 0.6, "nice_to_have": 0.3}
+                }).execute()
+            
+            self.supabase.table("role_salaries").upsert({
+                "role_slug": role_slug.lower().strip(),
+                "salary_data": salary_data
+            }).execute()
+            return True
+        except Exception:
+            return False
+
     def get_learning_resources(self, skill_names: List[str]) -> Dict[str, List[Dict]]:
         """
         Fetch learning resources for a list of skills.

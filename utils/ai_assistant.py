@@ -2,16 +2,21 @@
 AI Feedback & Chat Assistant
 Priority: 1) Anthropic Claude  2) Google Gemini (free)  3) Rule-based
 
-Setup in .streamlit/secrets.toml:
+Setup in .streamlit/secrets.toml or .env:
   GEMINI_API_KEY = "your-key"          # free at aistudio.google.com/app/apikey
+  GEMINI_MODEL = "gemini-3.5-flash"    # optional
   ANTHROPIC_API_KEY = "your-key"       # optional, higher quality
 
-Install: pip install google-generativeai
+Gemini is called through the official REST API, so no Gemini SDK dependency is required.
 """
 import json, logging, os
+from pathlib import Path
 import streamlit as st
 from typing import Dict, List, Generator
 logger = logging.getLogger(__name__)
+
+DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 _FEEDBACK_PROMPT = """You are an expert technical recruiter. Given the job description and resume below, return ONLY a JSON object with these exact keys:
 - "overall_verdict": one of ["Strong Match","Moderate Match","Weak Match"]
@@ -30,12 +35,51 @@ Section scores: {section_scores}
 
 Return ONLY valid JSON."""
 
+_FEEDBACK_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "overall_verdict": {"type": "string"},
+        "match_percentage": {"type": "integer"},
+        "matched_skills": {"type": "array", "items": {"type": "string"}},
+        "missing_skills": {"type": "array", "items": {"type": "string"}},
+        "extra_skills": {"type": "array", "items": {"type": "string"}},
+        "experience_gap": {"type": "string"},
+        "recommendation": {"type": "string"},
+        "improvement_suggestions": {"type": "array", "items": {"type": "string"}},
+        "interview_questions": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": [
+        "overall_verdict", "match_percentage", "matched_skills", "missing_skills",
+        "extra_skills", "experience_gap", "recommendation",
+        "improvement_suggestions", "interview_questions",
+    ],
+}
+
 _COACH_SYSTEM = """You are a sharp AI career coach. Candidate profile:
 Role: {target_role} | Score: {match_score}% | Verdict: {verdict}
 Skills: {skills_found}
 Missing: {missing_skills}
 Give SPECIFIC advice referencing their actual skills/gaps. Under 200 words.
 If the user asks about the salary range of a position or role (e.g. "what is the salary of a React developer in US?"), utilize your internal knowledge base to render explicit, structured salary tables or realistic ranges rather than simply redirecting them to external sites like Glassdoor or Levels.fyi."""
+
+
+def _read_dotenv_value(key):
+    """Small .env reader so local development works without adding python-dotenv."""
+    for base in [Path.cwd(), *Path.cwd().parents]:
+        env_path = base / ".env"
+        if not env_path.exists():
+            continue
+        try:
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                clean = line.strip()
+                if not clean or clean.startswith("#") or "=" not in clean:
+                    continue
+                name, value = clean.split("=", 1)
+                if name.strip() == key:
+                    return value.strip().strip('"').strip("'")
+        except OSError:
+            continue
+    return None
 
 
 def _secret(key):
@@ -56,7 +100,13 @@ def _secret(key):
                         pass
         except:
             pass
+    if not v:
+        v = _read_dotenv_value(key)
     return v
+
+
+def _gemini_model():
+    return _secret("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL
 
 def _active_provider():
     if _secret("ANTHROPIC_API_KEY"): return "claude"
@@ -68,36 +118,60 @@ import urllib.request
 import urllib.error
 
 # ── Gemini (Direct HTTP v1 API) ───────────────────────────────────────────────
-def _call_gemini_http(prompt, system="", max_tokens=1024, image_bytes=None):
+def _parse_json_object(raw):
+    clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError:
+        start, end = clean.find("{"), clean.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            return json.loads(clean[start:end + 1])
+        raise
+
+
+def _call_gemini_http(prompt, system="", max_tokens=1024, image_bytes=None,
+                      response_json=False, response_schema=None):
+    try:
+        import streamlit as st
+        if "gemini_error" in st.session_state:
+            del st.session_state["gemini_error"]
+    except Exception:
+        pass
+
     key = _secret("GEMINI_API_KEY")
     if not key:
         return None
         
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
+    url = GEMINI_API_URL.format(model=_gemini_model())
     
-    parts = []
-    if system:
-        parts.append({"text": f"System Instruction:\n{system}\n\nUser Prompt:\n{prompt}"})
-    else:
-        parts.append({"text": prompt})
+    parts = [{"text": prompt}]
         
     if image_bytes:
         import base64
         img_b64 = base64.b64encode(image_bytes).decode("utf-8")
         parts.append({
-            "inlineData": {
-                "mimeType": "image/png",
+            "inline_data": {
+                "mime_type": "image/png",
                 "data": img_b64
             }
         })
         
     payload = {
-        "contents": [{"parts": parts}],
-        "generation_config": {
-            "max_output_tokens": max_tokens,
-            "temperature": 0.2
+        "contents": [{"role": "user", "parts": parts}],
+        "generationConfig": {
+            "maxOutputTokens": max_tokens,
+            "temperature": 1.0
         }
     }
+    if response_json:
+        payload["generationConfig"]["responseFormat"] = {
+            "text": {
+                "mimeType": "APPLICATION_JSON",
+                "schema": response_schema or {"type": "object"},
+            }
+        }
+    if system:
+        payload["system_instruction"] = {"parts": [{"text": system}]}
     
 
         
@@ -106,7 +180,7 @@ def _call_gemini_http(prompt, system="", max_tokens=1024, image_bytes=None):
         req = urllib.request.Request(
             url,
             data=data,
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "x-goog-api-key": key},
             method="POST"
         )
         
@@ -122,25 +196,39 @@ def _call_gemini_http(prompt, system="", max_tokens=1024, image_bytes=None):
                     return parts[0].get("text")
                     
     except urllib.error.HTTPError as he:
-        err_msg = he.read().decode("utf-8")
-        logger.warning(f"Gemini HTTP Error {he.code}: {err_msg}")
-        st.session_state["gemini_error"] = f"HTTP {he.code}: {err_msg}"
+        err_msg = he.read().decode("utf-8", errors="replace")
+        try:
+            parsed_error = json.loads(err_msg).get("error", {})
+            message = parsed_error.get("message") or err_msg
+            status = parsed_error.get("status")
+            if status:
+                message = f"{status}: {message}"
+        except Exception:
+            message = err_msg
+        logger.warning(f"Gemini HTTP Error {he.code}: {message}")
+        st.session_state["gemini_error"] = f"HTTP {he.code}: {message}"
     except Exception as e:
         logger.warning(f"Gemini HTTP call failed: {e}")
         st.session_state["gemini_error"] = str(e)
         
     return None
 
-def _call_gemini(prompt, system="", max_tokens=1024):
-    return _call_gemini_http(prompt, system, max_tokens)
+def _call_gemini(prompt, system="", max_tokens=1024, response_json=False, response_schema=None):
+    return _call_gemini_http(
+        prompt,
+        system,
+        max_tokens,
+        response_json=response_json,
+        response_schema=response_schema,
+    )
 
 def _stream_gemini(prompt, system=""):
     res = _call_gemini_http(prompt, system, 1024)
     if res:
         yield res
 
-def _call_ai(prompt, system="", max_tokens=1024):
-    return _call_gemini(prompt, system, max_tokens)
+def _call_ai(prompt, system="", max_tokens=1024, response_json=False, response_schema=None):
+    return _call_gemini(prompt, system, max_tokens, response_json, response_schema)
 
 def _stream_ai(prompt, system=""):
     if _secret("GEMINI_API_KEY"):
@@ -151,18 +239,19 @@ class _RuleBasedFeedback:
     def generate(self, matched, missing, score, verdict):
         tips = []
         if missing:
-            tips.append(f"Add proficiency in {', '.join(missing[:3])} — required in the JD.")
+            tips.append(f"Add proficiency in {', '.join(missing[:3])} because these are required in the JD.")
         tips += ["Quantify achievements with numbers.",
                  "Mirror keywords from the job description in your summary.",
                  "Add certifications for missing required skills.",
                  "Build a portfolio project showing the required tech stack."]
-                 
+        matched_text = ", ".join(matched[:3]) or "the strongest skills on your resume"
+        missing_text = ", ".join(missing[:3]) or "the role's priority requirements"
         questions = [
-            "Can you describe your experience working with the core technical skills highlighted in your resume?",
-            "How do you typically approach learning a new technology or framework that is missing from your toolkit?",
-            "Can you walk us through a challenging project you engineered and how you measured its success?",
-            "What strategies do you use to ensure software quality and robust testing in your development lifecycle?",
-            "How do you handle collaboration and architectural decision conflicts within a cross-functional engineering team?"
+            f"Can you walk through a project where you used {matched_text}, and explain your exact contribution?",
+            f"The JD expects {missing_text}. How would you close those gaps in your first 30 to 60 days?",
+            "Which achievement on your resume best proves you can deliver measurable business or technical impact?",
+            "Describe a time you had to learn a new tool or framework quickly. What was your learning process?",
+            "If selected for this role, which resume experience would you want the hiring team to examine most closely, and why?"
         ]
         
         return {"overall_verdict": verdict, "match_percentage": int(score),
@@ -182,11 +271,10 @@ class AIFeedbackGenerator:
         scores_str = "\n".join(f"  {k}: {v:.1f}%" for k, v in section_scores.items())
         prompt = _FEEDBACK_PROMPT.format(jd_text=jd_text[:3000],
             resume_text=resume_text[:3000], section_scores=scores_str)
-        raw = _call_ai(prompt, max_tokens=1024)
+        raw = _call_ai(prompt, max_tokens=2048, response_json=True, response_schema=_FEEDBACK_SCHEMA)
         if raw:
             try:
-                clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-                parsed = json.loads(clean)
+                parsed = _parse_json_object(raw)
                 parsed["_source"] = _active_provider()
                 return parsed
             except Exception as e:
@@ -333,24 +421,53 @@ class AIAssistant:
 
 _ROLE_GEN_PROMPT = """You are an expert technical recruiter and systems analyst.
 For the job role title: "{role_title}"
-Generate a comprehensive list of typical responsibilities, required skills, recommended skills, and nice-to-have skills.
+Generate a comprehensive list of typical responsibilities, required skills, recommended skills, nice-to-have skills, and typical estimated salary ranges.
 Return ONLY a valid JSON object with the following keys and structure:
 - "description": "a concise 2-3 sentence overview of this role's primary responsibilities"
-- "required_skills": ["List of 6-8 core technical/hard skills absolutely required for this role (specific technologies, methodologies or tools)"]
-- "recommended_skills": ["List of 4-6 supplementary or supportive skills (tools, frameworks, processes)"]
-- "nice_to_have_skills": ["List of 3-5 soft skills or extra skills that set a candidate apart"]
+- "required_skills": ["List of 6-8 core technical/hard skills absolutely required for this role"]
+- "recommended_skills": ["List of 4-6 supplementary or supportive skills"]
+- "nice_to_have_skills": ["List of 3-5 soft skills or extra skills"]
+- "salary_ranges": {
+    "US": "$Min - $Max (e.g. $80,000 - $130,000)",
+    "UK": "£Min - £Max (e.g. £45,000 - £75,000)",
+    "India": "₹Min - ₹Max (e.g. ₹6,00,000 - ₹15,00,000)",
+    "Singapore": "S$Min - S$Max (e.g. S$60,000 - S$110,000)",
+    "Malaysia": "RM3,000 - RM5,500/mo (Fresh Grad) | RM1,000 - RM2,000/mo (Intern)",
+    "default": "$Min - $Max (e.g. $70,000 - $110,000)"
+  }
 
 Ensure the skills are formatted as standard technological keywords or industry terms. Return ONLY valid JSON, no markdown blocks, no extra text."""
+
+_ROLE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "description": {"type": "string"},
+        "required_skills": {"type": "array", "items": {"type": "string"}},
+        "recommended_skills": {"type": "array", "items": {"type": "string"}},
+        "nice_to_have_skills": {"type": "array", "items": {"type": "string"}},
+        "salary_ranges": {
+            "type": "object",
+            "properties": {
+                "US": {"type": "string"},
+                "UK": {"type": "string"},
+                "India": {"type": "string"},
+                "Singapore": {"type": "string"},
+                "Malaysia": {"type": "string"},
+                "default": {"type": "string"},
+            },
+        },
+    },
+    "required": ["description", "required_skills", "recommended_skills", "nice_to_have_skills", "salary_ranges"],
+}
 
 
 class AIRoleStandardGenerator:
     def generate_standards(self, role_title: str) -> Dict:
         prompt = _ROLE_GEN_PROMPT.format(role_title=role_title)
-        raw = _call_ai(prompt, max_tokens=1024)
+        raw = _call_ai(prompt, max_tokens=2048, response_json=True, response_schema=_ROLE_SCHEMA)
         if raw:
             try:
-                clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-                parsed = json.loads(clean)
+                parsed = _parse_json_object(raw)
                 return parsed
             except Exception as e:
                 logger.warning(f"AI JSON parse failed for role standards: {e}")
@@ -359,7 +476,15 @@ class AIRoleStandardGenerator:
             "description": f"Standard industry responsibilities and skills for a {role_title}.",
             "required_skills": ["Communication", "Problem Solving", "Technical Aptitude"],
             "recommended_skills": ["Project Management", "Team Collaboration"],
-            "nice_to_have_skills": ["Adaptability", "Continuous Learning"]
+            "nice_to_have_skills": ["Adaptability", "Continuous Learning"],
+            "salary_ranges": {
+                "US": "$70,000 - $110,000",
+                "UK": "£45,000 - £75,000",
+                "India": "₹6,00,000 - ₹15,00,000",
+                "Singapore": "S$60,000 - S$110,000",
+                "Malaysia": "RM3,000 - RM5,500/mo (Fresh Grad) | RM1,000 - RM2,000/mo (Intern)",
+                "default": "$65,000 - $100,000"
+            }
         }
 
 
@@ -383,6 +508,29 @@ Return ONLY a valid JSON object with the following exact keys and structure:
 
 Return ONLY valid JSON. No markdown backticks, no extra text."""
 
+_VISUAL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "visual_polish_score": {"type": "integer"},
+        "hierarchy_score": {"type": "integer"},
+        "consistency_score": {"type": "integer"},
+        "red_flags": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "issue": {"type": "string"},
+                    "reason": {"type": "string"},
+                    "box_2d": {"type": "array", "items": {"type": "integer"}},
+                },
+                "required": ["issue", "reason", "box_2d"],
+            },
+        },
+        "recruiter_notes": {"type": "string"},
+    },
+    "required": ["visual_polish_score", "hierarchy_score", "consistency_score", "red_flags", "recruiter_notes"],
+}
+
 
 class AIVisualEvaluator:
     def evaluate(self, image_bytes: bytes, font_metadata: list = None) -> Dict:
@@ -398,10 +546,13 @@ class AIVisualEvaluator:
             
         try:
             prompt = _VISUAL_PROMPT.format(font_metadata=str(font_metadata)[:4000] if font_metadata else "Not available")
-            res_text = _call_gemini_http(prompt, "", 1024, image_bytes)
+            res_text = _call_gemini_http(
+                prompt, "", 1024, image_bytes,
+                response_json=True,
+                response_schema=_VISUAL_SCHEMA,
+            )
             if res_text:
-                clean = res_text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-                parsed = json.loads(clean)
+                parsed = _parse_json_object(res_text)
                 parsed["_source"] = "gemini_vision"
                 return parsed
         except Exception as e:
