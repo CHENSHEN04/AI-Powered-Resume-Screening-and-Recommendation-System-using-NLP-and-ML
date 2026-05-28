@@ -339,6 +339,14 @@ class DatabaseManager:
         if not self.supabase:
             return False, "Database not connected."
         try:
+            all_skills = (
+                [(s.strip(), "required")     for s in required_skills     if s and s.strip()] +
+                [(s.strip(), "recommended")  for s in recommended_skills  if s and s.strip()] +
+                [(s.strip(), "nice_to_have") for s in nice_to_have_skills if s and s.strip()]
+            )
+            if not all_skills:
+                return False, "Custom role must include at least one required, recommended, or nice-to-have skill."
+
             # Step 1: Check if slug already exists
             existing = self.supabase.table("job_categories")                 .select("id").eq("slug", role_slug).execute()
             if existing.data:
@@ -358,11 +366,7 @@ class DatabaseManager:
             self.supabase.table("market_standards")                 .delete().eq("job_category_id", cat_id).execute()
 
             # Step 3: Save each skill and link to role
-            all_skills = (
-                [(s.strip(), "required")     for s in required_skills     if s.strip()] +
-                [(s.strip(), "recommended")  for s in recommended_skills  if s.strip()] +
-                [(s.strip(), "nice_to_have") for s in nice_to_have_skills if s.strip()]
-            )
+            saved_count = 0
             for skill_name, importance in all_skills:
                 sk = self.supabase.table("skills").select("id").eq("name", skill_name).execute()
                 if sk.data:
@@ -379,6 +383,13 @@ class DatabaseManager:
                         "job_category_id": cat_id, "skill_id": skill_id,
                         "importance_level": importance
                     }).execute()
+                    verify = self.supabase.table("market_standards").select("id")                     .eq("job_category_id", cat_id).eq("skill_id", skill_id).execute()
+                    if verify.data:
+                        saved_count += 1
+                else:
+                    saved_count += 1
+            if saved_count == 0:
+                return False, "Role was created, but no skill coverage rows were saved. Check Supabase RLS policies for skills and market_standards."
             return True, None
         except Exception as e:
             return False, str(e)

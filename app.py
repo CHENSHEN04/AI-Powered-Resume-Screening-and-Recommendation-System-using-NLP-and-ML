@@ -341,6 +341,64 @@ def show_welcome_back_dialog(email):
         st.rerun()
 
 
+def _persist_salary_json(role_slug, salary_ranges):
+    """Best-effort local salary fallback for offline/demo mode."""
+    if not salary_ranges:
+        return
+    try:
+        import json
+        import os
+
+        json_path = os.path.join("data", "salary_ranges.json")
+        all_salaries = {}
+        if os.path.exists(json_path):
+            with open(json_path, "r", encoding="utf-8") as f:
+                all_salaries = json.load(f)
+        all_salaries[role_slug] = salary_ranges
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(all_salaries, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def _create_custom_role_and_run(db, role_title, jd_text, file_bytes, filename):
+    """Resolve, persist, and use a custom role without allowing empty coverage."""
+    from utils.role_standards_resolver import normalize_role_slug, resolve_role_standards
+
+    role_slug = normalize_role_slug(role_title)
+    standards, err = resolve_role_standards(role_title, jd_text=jd_text)
+    if not standards:
+        st.error(err)
+        st.info("Paste a detailed job description for this role, then try again.")
+        return
+
+    success, save_err = db.save_custom_role(
+        role_title=role_title,
+        role_slug=role_slug,
+        required_skills=standards.get("required_skills", []),
+        recommended_skills=standards.get("recommended_skills", []),
+        nice_to_have_skills=standards.get("nice_to_have", standards.get("nice_to_have_skills", [])),
+    )
+    if not success:
+        st.warning(f"Could not save custom role to database: {save_err}")
+        st.info("The analysis will continue using this role for the current session only.")
+
+    salary_ranges = standards.get("salary_ranges", {})
+    if salary_ranges:
+        try:
+            db.save_role_salary(role_slug, salary_ranges)
+        except Exception:
+            pass
+        _persist_salary_json(role_slug, salary_ranges)
+
+    st.session_state[f"custom_standards_{role_slug}"] = standards
+    st.session_state["target_role"] = role_slug
+    st.session_state["sim_checked"] = False
+    st.session_state["similar_role_found"] = None
+    st.session_state["similar_role_slug"] = None
+    _run_analysis_pipeline(file_bytes, filename, jd_text)
+
+
 @st.dialog("🎯 Select Targeted Job Role", width="large")
 def show_role_selector_dialog(file_bytes, filename, jd_text):
     db = _get_db()
@@ -409,106 +467,13 @@ def show_role_selector_dialog(file_bytes, filename, jd_text):
                         _run_analysis_pipeline(file_bytes, filename, jd_text)
                 with c2:
                     if st.button("No, this is a distinct new role", use_container_width=True):
-                        # Proceed with AI generation
-                        with st.spinner(f"🤖 Searching responsibilities for '{cleaned_role}' using AI..."):
-                            from utils.ai_assistant import AIRoleStandardGenerator
-                            gen = AIRoleStandardGenerator()
-                            standards = gen.generate_standards(cleaned_role)
-                            
-                            new_slug = cleaned_role.lower().replace(" ", "_").replace("/", "_")
-                            
-                            # Save custom role
-                            success, err = db.save_custom_role(
-                                role_title=cleaned_role,
-                                role_slug=new_slug,
-                                required_skills=standards.get("required_skills", []),
-                                recommended_skills=standards.get("recommended_skills", []),
-                                nice_to_have_skills=standards.get("nice_to_have_skills", [])
-                            )
-                            
-                            # Save dynamic salaries to Supabase and local JSON
-                            salary_ranges = standards.get("salary_ranges", {})
-                            if salary_ranges:
-                                try:
-                                    db.save_role_salary(new_slug, salary_ranges)
-                                except Exception:
-                                    pass
-                                try:
-                                    import json
-                                    import os
-                                    json_path = os.path.join("data", "salary_ranges.json")
-                                    all_salaries = {}
-                                    if os.path.exists(json_path):
-                                        with open(json_path, "r", encoding="utf-8") as f:
-                                            all_salaries = json.load(f)
-                                    all_salaries[new_slug] = salary_ranges
-                                    with open(json_path, "w", encoding="utf-8") as f:
-                                        json.dump(all_salaries, f, indent=2, ensure_ascii=False)
-                                except Exception:
-                                    pass
-                            
-                            # Fallback if DB save fails
-                            if not success:
-                                st.session_state[f"custom_standards_{new_slug}"] = standards
-                            
-                            st.session_state["target_role"] = new_slug
-                            # Clear states
-                            st.session_state["sim_checked"] = False
-                            st.session_state["similar_role_found"] = None
-                            st.session_state["similar_role_slug"] = None
-                            # Run pipeline
-                            _run_analysis_pipeline(file_bytes, filename, jd_text)
+                        with st.spinner(f"Building skill coverage for '{cleaned_role}'..."):
+                            _create_custom_role_and_run(db, cleaned_role, jd_text, file_bytes, filename)
             else:
-                # No similar role found - proceed directly to AI generation
-                if st.button("🚀 Analyze with Custom Role", type="primary", use_container_width=True):
-                    with st.spinner(f"🤖 Searching responsibilities for '{cleaned_role}' using AI..."):
-                        from utils.ai_assistant import AIRoleStandardGenerator
-                        gen = AIRoleStandardGenerator()
-                        standards = gen.generate_standards(cleaned_role)
-                        
-                        new_slug = cleaned_role.lower().replace(" ", "_").replace("/", "_")
-                        
-                        # Save custom role
-                        success, err = db.save_custom_role(
-                            role_title=cleaned_role,
-                            role_slug=new_slug,
-                            required_skills=standards.get("required_skills", []),
-                            recommended_skills=standards.get("recommended_skills", []),
-                            nice_to_have_skills=standards.get("nice_to_have_skills", [])
-                        )
-                        
-                        # Save dynamic salaries to Supabase and local JSON
-                        salary_ranges = standards.get("salary_ranges", {})
-                        if salary_ranges:
-                            try:
-                                db.save_role_salary(new_slug, salary_ranges)
-                            except Exception:
-                                pass
-                            try:
-                                import json
-                                import os
-                                json_path = os.path.join("data", "salary_ranges.json")
-                                all_salaries = {}
-                                if os.path.exists(json_path):
-                                    with open(json_path, "r", encoding="utf-8") as f:
-                                        all_salaries = json.load(f)
-                                all_salaries[new_slug] = salary_ranges
-                                with open(json_path, "w", encoding="utf-8") as f:
-                                    json.dump(all_salaries, f, indent=2, ensure_ascii=False)
-                            except Exception:
-                                pass
-                        
-                        # Fallback if DB save fails
-                        if not success:
-                            st.session_state[f"custom_standards_{new_slug}"] = standards
-                        
-                        st.session_state["target_role"] = new_slug
-                        # Clear states
-                        st.session_state["sim_checked"] = False
-                        st.session_state["similar_role_found"] = None
-                        st.session_state["similar_role_slug"] = None
-                        # Run pipeline
-                        _run_analysis_pipeline(file_bytes, filename, jd_text)
+                # No similar role found - resolve standards for the new role.
+                if st.button("Analyze with Custom Role", type="primary", use_container_width=True):
+                    with st.spinner(f"Building skill coverage for '{cleaned_role}'..."):
+                        _create_custom_role_and_run(db, cleaned_role, jd_text, file_bytes, filename)
                         
     else:
         # Clear similarity states just in case they switched back
@@ -586,6 +551,30 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = "", 
     from utils.skill_extractor import SkillExtractor
     extractor = SkillExtractor()
     skill_data = extractor.extract_skills(resume_text)
+    if jd_text:
+        try:
+            from utils.role_standards_resolver import extract_skill_candidates, skill_mentioned_in_text
+
+            jd_dynamic_skills = extract_skill_candidates(jd_text)
+            dynamic_resume_skills = [
+                skill for skill in jd_dynamic_skills
+                if skill_mentioned_in_text(skill, resume_text)
+            ]
+            existing_skills = {s.lower() for s in skill_data.get("all_skills", [])}
+            new_resume_skills = [
+                skill for skill in dynamic_resume_skills
+                if skill.lower() not in existing_skills
+            ]
+            if new_resume_skills:
+                skill_data["all_skills"] = sorted(skill_data.get("all_skills", []) + new_resume_skills)
+                skill_data["count"] = len(skill_data["all_skills"])
+                skill_data.setdefault("detailed_skills", [])
+                skill_data["detailed_skills"].extend([
+                    {"name": skill, "sources": ["job_description_match"], "weight_score": 1.0}
+                    for skill in new_resume_skills
+                ])
+        except Exception:
+            pass
     st.session_state["skill_data"] = skill_data
 
     # 3. Classify (SVM + BERT hybrid)
@@ -627,6 +616,15 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = "", 
         # JD-specific gap: extract skills from JD and compare
         jd_skill_data = extractor.extract_skills(jd_text)
         jd_skills = jd_skill_data.get("all_skills", [])
+        try:
+            from utils.role_standards_resolver import extract_skill_candidates
+
+            dynamic_jd_skills = extract_skill_candidates(jd_text)
+            jd_skills = sorted(
+                list({s.lower(): s for s in jd_skills + dynamic_jd_skills}.values())
+            )
+        except Exception:
+            pass
         resume_skills_set = set(s.lower() for s in skill_data["all_skills"])
         matched_skills = [s for s in jd_skills if s.lower() in resume_skills_set]
         missing_skills = [s for s in jd_skills if s.lower() not in resume_skills_set]
@@ -641,7 +639,7 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = "", 
         missing_skills = []
         extra_skills   = []
 
-    analysis = analyzer.analyze_gaps(skill_data["all_skills"], target_role)
+    analysis = analyzer.analyze_gaps(skill_data["all_skills"], target_role, jd_text=jd_text)
     st.session_state["gap_analysis"] = analysis
 
     # 7. Weighted score (NEW)
@@ -1006,7 +1004,11 @@ def render_review_stage():
             from utils.gap_analyzer import GapAnalyzer
             db = _get_db()
             analyzer = GapAnalyzer(db)
-            new_analysis = analyzer.analyze_gaps(final_skills, st.session_state["target_role"])
+            new_analysis = analyzer.analyze_gaps(
+                final_skills,
+                st.session_state["target_role"],
+                jd_text=st.session_state.get("jd_text", ""),
+            )
             st.session_state["gap_analysis"] = new_analysis
 
             st.session_state["app_stage"] = "dashboard"

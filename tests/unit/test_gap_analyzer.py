@@ -8,6 +8,13 @@ import pytest
 from unittest.mock import MagicMock, patch, mock_open
 from pathlib import Path
 from utils.gap_analyzer import GapAnalyzer
+from utils.role_standards_resolver import (
+    extract_skill_candidates,
+    is_standards_usable,
+    resolve_role_standards,
+    skill_mentioned_in_text,
+    standards_from_jd,
+)
 
 # Sample mock data
 MOCK_MARKET_STANDARDS = {
@@ -60,6 +67,9 @@ class TestGapAnalyzer:
         result = analyzer.analyze_gaps(user_skills, "frontend_developer")
         
         assert result["match_percentage"] == 100.0
+        assert result["required_skills"] == ["HTML", "CSS", "JavaScript"]
+        assert result["recommended_skills"] == ["React", "TypeScript"]
+        assert result["nice_to_have"] == ["Figma"]
         assert not result["missing_required"]
         assert not result["missing_recommended"]
         assert "recommendations" in result
@@ -127,3 +137,101 @@ class TestGapAnalyzer:
         assert "UnknownLib" not in resources
         assert len(resources["React"]) == 1
         assert resources["React"][0]["title"] == "React Docs"
+
+    @patch('utils.gap_analyzer.json.load')
+    @patch('pathlib.Path.exists')
+    @patch('utils.gap_analyzer.resolve_role_standards')
+    def test_empty_db_role_resolves_dynamic_standards(self, mock_resolve, mock_exists, mock_json_load):
+        """Existing roles with no market_standards should be repopulated dynamically."""
+        mock_exists.return_value = True
+        mock_json_load.side_effect = [{"job_categories": {}}, {"resources": {}}]
+        mock_db = MagicMock()
+        mock_db.get_market_standards.return_value = {
+            "title": "Cloud Security Specialist",
+            "required_skills": [],
+            "recommended_skills": [],
+            "nice_to_have": [],
+            "weights": {"required": 1.0, "recommended": 0.6, "nice_to_have": 0.3},
+        }
+        mock_db.save_custom_role.return_value = (True, None)
+        mock_resolve.return_value = ({
+            "title": "Cloud Security Specialist",
+            "required_skills": ["AWS", "Network Security"],
+            "recommended_skills": ["SIEM"],
+            "nice_to_have": ["Terraform"],
+            "salary_ranges": {"Malaysia": "RM5,000 - RM9,000/mo"},
+            "weights": {"required": 1.0, "recommended": 0.6, "nice_to_have": 0.3},
+        }, None)
+
+        analyzer = GapAnalyzer(mock_db)
+        result = analyzer.analyze_gaps(["AWS"], "cloud_security_specialist", jd_text="Requires AWS and SIEM.")
+
+        assert result["missing_required"] == ["Network Security"]
+        assert result["missing_recommended"] == ["SIEM"]
+        mock_db.save_custom_role.assert_called_once()
+
+
+class TestRoleStandardsResolver:
+    def test_rejects_generic_ai_fallback_skills(self):
+        standards = {
+            "required_skills": ["Communication", "Problem Solving", "Technical Aptitude"],
+            "recommended_skills": ["Project Management"],
+            "nice_to_have_skills": ["Adaptability"],
+        }
+
+        assert not is_standards_usable(standards)
+
+    @patch('utils.ai_assistant.AIRoleStandardGenerator.generate_standards')
+    def test_generic_ai_falls_back_to_jd_skills(self, mock_generate):
+        mock_generate.return_value = {
+            "description": "Generic fallback",
+            "required_skills": ["Communication", "Problem Solving", "Technical Aptitude"],
+            "recommended_skills": ["Project Management"],
+            "nice_to_have_skills": ["Adaptability"],
+            "salary_ranges": {},
+        }
+        jd_text = """
+        Requirements: Python, FastAPI, PostgreSQL, AWS.
+        Preferred: Docker, CI/CD, Terraform.
+        Bonus: SIEM.
+        """
+
+        standards, err = resolve_role_standards("Platform Engineer", jd_text=jd_text)
+
+        assert err is None
+        assert standards["_source"] == "jd"
+        assert "Python" in standards["required_skills"]
+        assert "Docker" in standards["recommended_skills"]
+
+    @patch('utils.ai_assistant.AIRoleStandardGenerator.generate_standards')
+    def test_no_ai_no_jd_returns_error(self, mock_generate):
+        mock_generate.return_value = {
+            "required_skills": ["Communication", "Problem Solving", "Technical Aptitude"],
+            "recommended_skills": [],
+            "nice_to_have_skills": [],
+            "salary_ranges": {},
+        }
+
+        standards, err = resolve_role_standards("Unclear Role", jd_text="")
+
+        assert standards is None
+        assert "Unable to create usable skill coverage" in err
+
+    def test_jd_extraction_not_limited_to_static_categories(self):
+        standards = standards_from_jd(
+            "MLOps Engineer",
+            "Required: Kubernetes, MLflow, Feature Store, Python. Preferred: Kubeflow and Terraform.",
+        )
+
+        assert "Kubernetes" in standards["required_skills"]
+        assert "MLflow" in standards["required_skills"]
+        assert "Feature Store" in standards["required_skills"]
+        assert "Terraform" in standards["recommended_skills"]
+
+    def test_dynamic_jd_skills_can_be_matched_in_resume_text(self):
+        jd_skills = extract_skill_candidates("Required: Kubernetes, MLflow, Feature Store.")
+        resume_text = "Built deployment workflows with Kubernetes and MLflow model tracking."
+        matched = [skill for skill in jd_skills if skill_mentioned_in_text(skill, resume_text)]
+
+        assert "Kubernetes" in matched
+        assert "MLflow" in matched

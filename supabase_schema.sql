@@ -70,6 +70,8 @@ create table public.skills (
 
 alter table public.skills enable row level security;
 create policy "Read access for all" on skills for select using (true);
+create policy "Authenticated users can insert skills" on skills for insert with check (auth.role() = 'authenticated');
+create policy "Authenticated users can update skills" on skills for update using (auth.role() = 'authenticated');
 
 -- 4. MARKET STANDARDS (Job <-> Skill Mappings)
 -- -----------------------------------------------------------------------------
@@ -84,6 +86,9 @@ create table public.market_standards (
 
 alter table public.market_standards enable row level security;
 create policy "Read access for all" on market_standards for select using (true);
+create policy "Authenticated users can insert market standards" on market_standards for insert with check (auth.role() = 'authenticated');
+create policy "Authenticated users can update market standards" on market_standards for update using (auth.role() = 'authenticated');
+create policy "Authenticated users can delete market standards" on market_standards for delete using (auth.role() = 'authenticated');
 
 -- 5. LEARNING RESOURCES
 -- -----------------------------------------------------------------------------
@@ -102,6 +107,8 @@ create table public.learning_resources (
 
 alter table public.learning_resources enable row level security;
 create policy "Read access for all" on learning_resources for select using (true);
+create policy "Authenticated users can insert learning resources" on learning_resources for insert with check (auth.role() = 'authenticated');
+create policy "Authenticated users can update learning resources" on learning_resources for update using (auth.role() = 'authenticated');
 
 -- 6. RESUMES
 -- -----------------------------------------------------------------------------
@@ -165,4 +172,6 @@ create table public.role_salaries (
 
 alter table public.role_salaries enable row level security;
 create policy "Read access for all" on role_salaries for select using (true);
+create policy "Authenticated users can insert role salaries" on role_salaries for insert with check (auth.role() = 'authenticated');
+create policy "Authenticated users can update role salaries" on role_salaries for update using (auth.role() = 'authenticated');
 

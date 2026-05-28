@@ -94,3 +94,26 @@ CREATE POLICY "Public Update Market Standards" ON market_standards FOR UPDATE US
 
 DROP POLICY IF EXISTS "Public Update Learning Resources" ON learning_resources;
 CREATE POLICY "Public Update Learning Resources" ON learning_resources FOR UPDATE USING (true);
+
+-- 4. DELETE POLICIES (FOR CUSTOM ROLE RE-SAVES)
+DROP POLICY IF EXISTS "Public Delete Market Standards" ON market_standards;
+CREATE POLICY "Public Delete Market Standards" ON market_standards FOR DELETE USING (true);
+
+-- 5. ROLE SALARIES (Dynamic compensation metadata)
+CREATE TABLE IF NOT EXISTS role_salaries (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    role_slug TEXT NOT NULL UNIQUE REFERENCES job_categories(slug) ON DELETE CASCADE,
+    salary_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE role_salaries ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Public Read Role Salaries" ON role_salaries;
+CREATE POLICY "Public Read Role Salaries" ON role_salaries FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Public Insert Role Salaries" ON role_salaries;
+CREATE POLICY "Public Insert Role Salaries" ON role_salaries FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public Update Role Salaries" ON role_salaries;
+CREATE POLICY "Public Update Role Salaries" ON role_salaries FOR UPDATE USING (true);
