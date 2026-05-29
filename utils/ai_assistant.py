@@ -9,29 +9,39 @@ Setup in .streamlit/secrets.toml or .env:
 
 Gemini is called through the official REST API, so no Gemini SDK dependency is required.
 """
-import json, logging, os
+import json, logging, os, time
+import urllib.request
+import urllib.error
 from pathlib import Path
 import streamlit as st
-from typing import Dict, List, Generator
+from typing import Dict, List, Generator, Optional
 logger = logging.getLogger(__name__)
 
-DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
+DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
-_FEEDBACK_PROMPT = """You are an expert technical recruiter. Given the job description and resume below, return ONLY a JSON object with these exact keys:
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
+
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+DEFAULT_OPENROUTER_MODEL = "google/gemma-2-9b-it:free"
+
+_FEEDBACK_PROMPT = """You are an expert technical recruiter. Given the candidate profile details below, analyze their suitability and return ONLY a JSON object with these exact keys:
 - "overall_verdict": one of ["Strong Match","Moderate Match","Weak Match"]
 - "match_percentage": integer 0-100
-- "matched_skills": list of skills in both JD and resume
-- "missing_skills": list of skills in JD but not in resume
+- "matched_skills": list of skills in both JD and resume (based on the pre-computed list)
+- "missing_skills": list of skills in JD but not in resume (based on the pre-computed list)
 - "extra_skills": list of notable resume skills not in JD
 - "experience_gap": string describing experience level mismatch
 - "recommendation": 2-3 sentence hiring recommendation
 - "improvement_suggestions": list of 3-5 actionable suggestions
 - "interview_questions": list of exactly 5 customized technical or behavioral interview questions based on the candidate's specific experience and detected skill gaps
 
-Job Description: {jd_text}
-Resume: {resume_text}
-Section scores: {section_scores}
+Job Description Summary: {jd_text}
+Resume Summary: {resume_text}
+Section Scores: {section_scores}
+Pre-computed Matched Skills: {matched_skills}
+Pre-computed Missing Skills: {missing_skills}
 
 Return ONLY valid JSON."""
 
@@ -82,6 +92,25 @@ def _read_dotenv_value(key):
     return None
 
 
+def _read_secrets_toml_direct(key):
+    """Fallback reader to read .streamlit/secrets.toml directly when running outside Streamlit."""
+    for base in [Path.cwd(), *Path.cwd().parents]:
+        toml_path = base / ".streamlit" / "secrets.toml"
+        if not toml_path.exists():
+            continue
+        try:
+            for line in toml_path.read_text(encoding="utf-8").splitlines():
+                clean = line.strip()
+                if not clean or clean.startswith("#") or "=" not in clean:
+                    continue
+                name, value = clean.split("=", 1)
+                if name.strip().lower() == key.lower():
+                    return value.strip().strip('"').strip("'")
+        except OSError:
+            continue
+    return None
+
+
 def _secret(key):
     v = os.environ.get(key)
     if not v:
@@ -102,7 +131,97 @@ def _secret(key):
             pass
     if not v:
         v = _read_dotenv_value(key)
+    if not v:
+        v = _read_secrets_toml_direct(key)
     return v
+
+
+# ── Unified Rotating Key Manager ──────────────────────────────────────────────
+class RotatingKeyManager:
+    def __init__(self, keys: List[str]):
+        self.keys = [k.strip() for k in keys if k and k.strip()]
+        self.current_idx = 0
+        self.cooldowns = {} # key -> timestamp when it can be retried
+        
+    def get_next_key(self) -> Optional[str]:
+        if not self.keys:
+            return None
+        
+        now = time.time()
+        # Clean up old cooldowns that have expired
+        self.cooldowns = {k: ts for k, ts in self.cooldowns.items() if ts > now}
+        
+        # Try to find a key that is not on cooldown
+        for _ in range(len(self.keys)):
+            key = self.keys[self.current_idx]
+            self.current_idx = (self.current_idx + 1) % len(self.keys)
+            
+            # Check if this key is on cooldown
+            if key not in self.cooldowns:
+                return key
+                
+        # If all keys are on cooldown, return None to trigger cascade to next provider
+        return None
+        
+    def mark_cooldown(self, key: str, duration: int = 60):
+        if key in self.keys:
+            self.cooldowns[key] = time.time() + duration
+            
+    def has_keys(self) -> bool:
+        return len(self.keys) > 0
+
+
+def _parse_keys_from_secrets(key_name, single_fallback_name) -> List[str]:
+    """Robust helper to parse a list of keys or a single key from env/secrets/toml."""
+    # 1. Try to read list or string directly from plural key_name
+    val = _secret(key_name)
+    if val:
+        if isinstance(val, list):
+            return val
+        if isinstance(val, str):
+            # Might be comma-separated or JSON list
+            val = val.strip()
+            if val.startswith("[") and val.endswith("]"):
+                try:
+                    import ast
+                    parsed = ast.literal_eval(val)
+                    if isinstance(parsed, list):
+                        return parsed
+                except Exception:
+                    pass
+            return [k.strip() for k in val.split(",") if k.strip()]
+            
+    # 2. Try single key fallback (which may actually contain a list or string list format)
+    single_val = _secret(single_fallback_name)
+    if single_val:
+        if isinstance(single_val, list):
+            return single_val
+        if isinstance(single_val, str):
+            single_val = single_val.strip()
+            if single_val.startswith("[") and single_val.endswith("]"):
+                try:
+                    import ast
+                    parsed = ast.literal_eval(single_val)
+                    if isinstance(parsed, list):
+                        return parsed
+                except Exception:
+                    pass
+            if "," in single_val:
+                return [k.strip() for k in single_val.split(",") if k.strip()]
+            return [single_val]
+        
+    return []
+
+
+# Instantiate global rotating key managers
+_gemini_keys = _parse_keys_from_secrets("GEMINI_API_KEYS", "GEMINI_API_KEY")
+_gemini_manager = RotatingKeyManager(_gemini_keys)
+
+_groq_keys = _parse_keys_from_secrets("GROQ_API_KEYS", "GROQ_API_KEY")
+_groq_manager = RotatingKeyManager(_groq_keys)
+
+_openrouter_keys = _parse_keys_from_secrets("OPENROUTER_API_KEYS", "OPENROUTER_API_KEY")
+_openrouter_manager = RotatingKeyManager(_openrouter_keys)
 
 
 def _gemini_model():
@@ -110,12 +229,39 @@ def _gemini_model():
 
 def _active_provider():
     if _secret("ANTHROPIC_API_KEY"): return "claude"
-    if _secret("GEMINI_API_KEY"):    return "gemini"
+    try:
+        if st.session_state.get("active_ai_provider"):
+            return st.session_state["active_ai_provider"]
+    except Exception:
+        pass
+    if _gemini_manager.has_keys():      return "gemini"
+    if _groq_manager.has_keys():        return "groq"
+    if _openrouter_manager.has_keys():  return "openrouter"
     return "rule_based"
 
 # ── Gemini ────────────────────────────────────────────────────────────────────
-import urllib.request
-import urllib.error
+
+# ── Resilient Request Engine ──────────────────────────────────────────────────
+def _call_http_with_retry(req, retries=3, backoff_factor=2, retry_429=True):
+    """Make an HTTP request with exponential backoff on 429 and 5xx errors."""
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(req) as response:
+                return response.read().decode("utf-8")
+        except urllib.error.HTTPError as he:
+            # If 429 rate limit is hit and retry_429 is False, raise immediately so we can rotate keys
+            if he.code == 429 and not retry_429:
+                raise he
+            # Retry on rate limits (429) or server errors (5xx)
+            if he.code == 429 or 500 <= he.code < 600:
+                if attempt == retries - 1:
+                    raise he
+                sleep_time = backoff_factor ** (attempt + 1)
+                logger.warning(f"HTTP {he.code} encountered. Retrying in {sleep_time}s (Attempt {attempt+1}/{retries})...")
+                time.sleep(sleep_time)
+            else:
+                # Immediate failure for other errors (e.g. 400, 401, 403, 404)
+                raise he
 
 # ── Gemini (Direct HTTP v1 API) ───────────────────────────────────────────────
 def _parse_json_object(raw):
@@ -138,8 +284,7 @@ def _call_gemini_http(prompt, system="", max_tokens=1024, image_bytes=None,
     except Exception:
         pass
 
-    key = _secret("GEMINI_API_KEY")
-    if not key:
+    if not _gemini_manager.has_keys():
         return None
         
     url = GEMINI_API_URL.format(model=_gemini_model())
@@ -173,45 +318,198 @@ def _call_gemini_http(prompt, system="", max_tokens=1024, image_bytes=None,
     if system:
         payload["system_instruction"] = {"parts": [{"text": system}]}
     
-
-        
-    try:
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={"Content-Type": "application/json", "x-goog-api-key": key},
-            method="POST"
-        )
-        
-        with urllib.request.urlopen(req) as response:
-            res_data = json.loads(response.read().decode("utf-8"))
-            if "gemini_error" in st.session_state:
-                del st.session_state["gemini_error"]
+    attempts = len(_gemini_manager.keys)
+    attempts = max(1, attempts)
+    
+    for attempt in range(attempts):
+        key = _gemini_manager.get_next_key()
+        if not key:
+            logger.warning("All Gemini keys are currently on cooldown.")
+            try:
+                st.session_state["gemini_error"] = "All Gemini API keys are on cooldown."
+            except Exception:
+                pass
+            return None
+            
+        try:
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers={
+                    "Content-Type": "application/json", 
+                    "x-goog-api-key": key,
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                },
+                method="POST"
+            )
+            
+            res_text = _call_http_with_retry(req, retry_429=False)
+            res_data = json.loads(res_text)
+            
+            try:
+                if "gemini_error" in st.session_state:
+                    del st.session_state["gemini_error"]
+            except Exception:
+                pass
             
             candidates = res_data.get("candidates", [])
             if candidates:
                 parts = candidates[0].get("content", {}).get("parts", [])
                 if parts:
                     return parts[0].get("text")
-                    
-    except urllib.error.HTTPError as he:
-        err_msg = he.read().decode("utf-8", errors="replace")
-        try:
-            parsed_error = json.loads(err_msg).get("error", {})
-            message = parsed_error.get("message") or err_msg
-            status = parsed_error.get("status")
-            if status:
-                message = f"{status}: {message}"
-        except Exception:
-            message = err_msg
-        logger.warning(f"Gemini HTTP Error {he.code}: {message}")
-        st.session_state["gemini_error"] = f"HTTP {he.code}: {message}"
-    except Exception as e:
-        logger.warning(f"Gemini HTTP call failed: {e}")
-        st.session_state["gemini_error"] = str(e)
-        
+                        
+        except urllib.error.HTTPError as he:
+            if he.code == 429:
+                logger.warning(f"Gemini API key rate limited (429). Marking on cooldown. Attempt {attempt+1}/{attempts}")
+                _gemini_manager.mark_cooldown(key, duration=60)
+                continue
+                
+            err_msg = he.read().decode("utf-8", errors="replace")
+            try:
+                parsed_error = json.loads(err_msg).get("error", {})
+                message = parsed_error.get("message") or err_msg
+                status = parsed_error.get("status")
+                if status:
+                    message = f"{status}: {message}"
+            except Exception:
+                message = err_msg
+            logger.warning(f"Gemini HTTP Error {he.code}: {message}")
+            try:
+                st.session_state["gemini_error"] = f"HTTP {he.code}: {message}"
+            except Exception:
+                pass
+            return None
+        except Exception as e:
+            logger.warning(f"Gemini HTTP call failed: {e}")
+            try:
+                st.session_state["gemini_error"] = str(e)
+            except Exception:
+                pass
+            return None
+            
     return None
+
+# ── Groq API Caller ───────────────────────────────────────────────────────────
+def _call_groq_http(prompt, system="", max_tokens=1024, response_json=False):
+    if not _groq_manager.has_keys():
+        return None
+        
+    model = _secret("GROQ_MODEL") or DEFAULT_GROQ_MODEL
+    
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+    
+    payload = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": 0.7
+    }
+    if response_json:
+        payload["response_format"] = {"type": "json_object"}
+        
+    attempts = len(_groq_manager.keys)
+    attempts = max(1, attempts)
+    
+    for attempt in range(attempts):
+        key = _groq_manager.get_next_key()
+        if not key:
+            logger.warning("All Groq keys are currently on cooldown.")
+            return None
+            
+        try:
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(
+                GROQ_API_URL,
+                data=data,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {key}",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                },
+                method="POST"
+            )
+            
+            res_text = _call_http_with_retry(req, retry_429=False)
+            res_data = json.loads(res_text)
+            choices = res_data.get("choices", [])
+            if choices:
+                return choices[0].get("message", {}).get("content")
+        except urllib.error.HTTPError as he:
+            if he.code == 429:
+                logger.warning(f"Groq API key rate limited (429). Marking on cooldown. Attempt {attempt+1}/{attempts}")
+                _groq_manager.mark_cooldown(key, duration=60)
+                continue
+            logger.warning(f"Groq API call HTTP error {he.code}: {he.read().decode('utf-8', errors='replace')}")
+        except Exception as e:
+            logger.warning(f"Groq API call failed: {e}")
+            
+    return None
+
+# ── OpenRouter API Caller ─────────────────────────────────────────────────────
+def _call_openrouter_http(prompt, system="", max_tokens=1024, response_json=False):
+    if not _openrouter_manager.has_keys():
+        return None
+        
+    model = _secret("OPENROUTER_MODEL") or DEFAULT_OPENROUTER_MODEL
+    
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+    
+    payload = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": 0.7
+    }
+    if response_json:
+        payload["response_format"] = {"type": "json_object"}
+        
+    attempts = len(_openrouter_manager.keys)
+    attempts = max(1, attempts)
+    
+    for attempt in range(attempts):
+        key = _openrouter_manager.get_next_key()
+        if not key:
+            logger.warning("All OpenRouter keys are currently on cooldown.")
+            return None
+            
+        try:
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(
+                OPENROUTER_API_URL,
+                data=data,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {key}",
+                    "HTTP-Referer": "http://localhost:8501",
+                    "X-Title": "AI Resume Screener",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                },
+                method="POST"
+            )
+            
+            res_text = _call_http_with_retry(req, retry_429=False)
+            res_data = json.loads(res_text)
+            choices = res_data.get("choices", [])
+            if choices:
+                return choices[0].get("message", {}).get("content")
+        except urllib.error.HTTPError as he:
+            if he.code == 429:
+                logger.warning(f"OpenRouter API key rate limited (429). Marking on cooldown. Attempt {attempt+1}/{attempts}")
+                _openrouter_manager.mark_cooldown(key, duration=60)
+                continue
+            logger.warning(f"OpenRouter API call HTTP error {he.code}: {he.read().decode('utf-8', errors='replace')}")
+        except Exception as e:
+            logger.warning(f"OpenRouter API call failed: {e}")
+            
+    return None
+
 
 def _call_gemini(prompt, system="", max_tokens=1024, response_json=False, response_schema=None):
     return _call_gemini_http(
@@ -227,12 +525,73 @@ def _stream_gemini(prompt, system=""):
     if res:
         yield res
 
-def _call_ai(prompt, system="", max_tokens=1024, response_json=False, response_schema=None):
-    return _call_gemini(prompt, system, max_tokens, response_json, response_schema)
+def _call_ai(prompt, system="", max_tokens=1024, response_json=False, response_schema=None, return_provider=False):
+    active_prov = "rule_based"
+    res = None
+    
+    # Try Gemini first if keys available
+    if _gemini_manager.has_keys():
+        res = _call_gemini(prompt, system, max_tokens, response_json, response_schema)
+        if res:
+            active_prov = "gemini"
+            
+    # Try Groq as secondary fallback
+    if not res and _groq_manager.has_keys():
+        res = _call_groq_http(prompt, system, max_tokens, response_json)
+        if res:
+            active_prov = "groq"
+            
+    # Try OpenRouter as tertiary fallback
+    if not res and _openrouter_manager.has_keys():
+        res = _call_openrouter_http(prompt, system, max_tokens, response_json)
+        if res:
+            active_prov = "openrouter"
+            
+    # Try to write to session state (safely)
+    if res:
+        try:
+            st.session_state["active_ai_provider"] = active_prov
+        except Exception:
+            pass
+            
+    if return_provider:
+        return res, active_prov
+    return res
 
 def _stream_ai(prompt, system=""):
-    if _secret("GEMINI_API_KEY"):
-        yield from _stream_gemini(prompt, system)
+    # Try Gemini streaming
+    if _gemini_manager.has_keys():
+        try:
+            yield from _stream_gemini(prompt, system)
+            try:
+                st.session_state["active_ai_provider"] = "gemini"
+            except Exception:
+                pass
+            return
+        except Exception:
+            pass
+            
+    # Try Groq fallback
+    if _groq_manager.has_keys():
+        res = _call_groq_http(prompt, system, 1024)
+        if res:
+            yield res
+            try:
+                st.session_state["active_ai_provider"] = "groq"
+            except Exception:
+                pass
+            return
+            
+    # Try OpenRouter fallback
+    if _openrouter_manager.has_keys():
+        res = _call_openrouter_http(prompt, system, 1024)
+        if res:
+            yield res
+            try:
+                st.session_state["active_ai_provider"] = "openrouter"
+            except Exception:
+                pass
+            return
 
 # ── Rule-based fallback ───────────────────────────────────────────────────────
 class _RuleBasedFeedback:
@@ -262,24 +621,50 @@ class _RuleBasedFeedback:
                 "interview_questions": questions,
                 "_source": "rule_based"}
 
-# ── Feedback Generator ────────────────────────────────────────────────────────
+# ── Caching & Feedback Generator ──────────────────────────────────────────────
+@st.cache_data(show_spinner=False, ttl=3600)
+def _cached_generate_feedback(jd_text, resume_text, section_scores_str,
+                              matched_skills_tuple, missing_skills_tuple,
+                              final_score, verdict):
+    prompt = _FEEDBACK_PROMPT.format(
+        jd_text=jd_text[:2000],
+        resume_text=resume_text[:2000],
+        section_scores=section_scores_str,
+        matched_skills=", ".join(matched_skills_tuple),
+        missing_skills=", ".join(missing_skills_tuple)
+    )
+    raw, provider = _call_ai(prompt, max_tokens=1024, response_json=True, response_schema=_FEEDBACK_SCHEMA, return_provider=True)
+    if raw:
+        try:
+            parsed = _parse_json_object(raw)
+            parsed["_source"] = provider
+            return parsed
+        except Exception as e:
+            logger.warning(f"AI JSON parse failed in cached generator: {e}")
+    return None
+
 class AIFeedbackGenerator:
     def __init__(self): self._fb = _RuleBasedFeedback()
 
     def generate(self, jd_text, resume_text, section_scores,
                  matched_skills, missing_skills, final_score, verdict) -> Dict:
         scores_str = "\n".join(f"  {k}: {v:.1f}%" for k, v in section_scores.items())
-        prompt = _FEEDBACK_PROMPT.format(jd_text=jd_text[:3000],
-            resume_text=resume_text[:3000], section_scores=scores_str)
-        raw = _call_ai(prompt, max_tokens=2048, response_json=True, response_schema=_FEEDBACK_SCHEMA)
-        if raw:
-            try:
-                parsed = _parse_json_object(raw)
-                parsed["_source"] = _active_provider()
-                return parsed
-            except Exception as e:
-                logger.warning(f"AI JSON parse failed: {e}")
+        
+        # Call the cached helper (lists are converted to tuples so they can be hashed)
+        parsed = _cached_generate_feedback(
+            jd_text,
+            resume_text,
+            scores_str,
+            tuple(matched_skills),
+            tuple(missing_skills),
+            final_score,
+            verdict
+        )
+        if parsed:
+            return parsed
+            
         return self._fb.generate(matched_skills, missing_skills, final_score, verdict)
+
 
 # ── Career Chat Assistant ─────────────────────────────────────────────────────
 class AIAssistant:
@@ -532,6 +917,24 @@ _VISUAL_SCHEMA = {
 }
 
 
+@st.cache_data(show_spinner=False, ttl=3600)
+def _cached_visual_evaluate(image_bytes: bytes, font_metadata_str: str) -> Optional[Dict]:
+    try:
+        prompt = _VISUAL_PROMPT.format(font_metadata=font_metadata_str[:4000] if font_metadata_str else "Not available")
+        res_text = _call_gemini_http(
+            prompt, "", 512, image_bytes,
+            response_json=True,
+            response_schema=_VISUAL_SCHEMA,
+        )
+        if res_text:
+            parsed = _parse_json_object(res_text)
+            parsed["_source"] = "gemini_vision"
+            return parsed
+    except Exception as e:
+        logger.warning(f"Gemini Vision assessment failed in cached evaluator: {e}")
+    return None
+
+
 class AIVisualEvaluator:
     def evaluate(self, image_bytes: bytes, font_metadata: list = None) -> Dict:
         """
@@ -540,23 +943,13 @@ class AIVisualEvaluator:
         if not image_bytes:
             return self._fallback()
             
-        key = _secret("GEMINI_API_KEY")
-        if not key:
+        if not _gemini_manager.has_keys():
             return self._fallback()
             
-        try:
-            prompt = _VISUAL_PROMPT.format(font_metadata=str(font_metadata)[:4000] if font_metadata else "Not available")
-            res_text = _call_gemini_http(
-                prompt, "", 1024, image_bytes,
-                response_json=True,
-                response_schema=_VISUAL_SCHEMA,
-            )
-            if res_text:
-                parsed = _parse_json_object(res_text)
-                parsed["_source"] = "gemini_vision"
-                return parsed
-        except Exception as e:
-            logger.warning(f"Gemini Vision assessment failed: {e}")
+        font_metadata_str = str(font_metadata) if font_metadata else ""
+        parsed = _cached_visual_evaluate(image_bytes, font_metadata_str)
+        if parsed:
+            return parsed
             
         return self._fallback()
         
@@ -581,4 +974,5 @@ class AIVisualEvaluator:
             "recruiter_notes": "Your resume has a solid foundational layout, but suffers from high text density and uneven vertical margins. Standardizing on a single font family (like Arial or Inter) and increasing whitespace around headers by 15% will instantly elevate your professional appeal.",
             "_source": "rule_based"
         }
+
 

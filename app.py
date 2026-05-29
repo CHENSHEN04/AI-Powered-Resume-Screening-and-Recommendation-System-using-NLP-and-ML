@@ -80,7 +80,7 @@ for k, v in DEFAULTS.items():
 # ==============================================================================
 def _get_db():
     """Get DB client scoped to the current user session."""
-    if "db_client" not in st.session_state:
+    if "db_client" not in st.session_state or st.session_state["db_client"].supabase is None:
         st.session_state["db_client"] = DatabaseManager()
     return st.session_state["db_client"]
 
@@ -220,12 +220,9 @@ def render_sidebar():
 # ==============================================================================
 def render_upload_stage():
     st.markdown("""
-    <div class="hero-container animate-in">
-        <h1>Deep Career Coach</h1>
-        <p class="hero-subtitle">
-            Upload your resume and a job description to get an instant AI-powered
-            match score, skill gap analysis, and personalized recommendations.
-        </p>
+    <div class="hero-container animate-in" style="text-align: center; padding: 2rem 1rem;">
+        <h1 style="font-size: 2.8rem; margin-bottom: 0.5rem; background: linear-gradient(135deg, #6C63FF 0%, #FF6584 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center;">🎯 Deep Career Coach</h1>
+        <p class="hero-subtitle" style="text-align: center; margin-left: auto; margin-right: auto; font-size: 1.15rem; max-width: 750px; color: #A1A1AA; line-height: 1.6;">Upload your resume and a job description to get an instant AI-powered match score, skill gap analysis, and personalized recommendations.</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -369,7 +366,8 @@ def _create_custom_role_and_run(db, role_title, jd_text, file_bytes, filename):
     standards, err = resolve_role_standards(role_title, jd_text=jd_text)
     if not standards:
         st.error(err)
-        st.info("Paste a detailed job description for this role, then try again.")
+        if not jd_text or not jd_text.strip():
+            st.info("Please provide a Job Description (JD) to extract fallback skills when AI is unavailable or generic.")
         return
 
     success, save_err = db.save_custom_role(
@@ -378,17 +376,17 @@ def _create_custom_role_and_run(db, role_title, jd_text, file_bytes, filename):
         required_skills=standards.get("required_skills", []),
         recommended_skills=standards.get("recommended_skills", []),
         nice_to_have_skills=standards.get("nice_to_have", standards.get("nice_to_have_skills", [])),
+        salary_ranges=standards.get("salary_ranges", {}),
+        learning_resources=standards.get("learning_resources", {}),
     )
     if not success:
-        st.warning(f"Could not save custom role to database: {save_err}")
+        st.error(f"Failed to save custom role to database: {save_err}")
         st.info("The analysis will continue using this role for the current session only.")
+    else:
+        st.success(f"Successfully saved '{role_title}' and all its requirements to the database!")
 
     salary_ranges = standards.get("salary_ranges", {})
     if salary_ranges:
-        try:
-            db.save_role_salary(role_slug, salary_ranges)
-        except Exception:
-            pass
         _persist_salary_json(role_slug, salary_ranges)
 
     st.session_state[f"custom_standards_{role_slug}"] = standards
@@ -1108,6 +1106,7 @@ def render_dashboard_stage():
             if st.button("💾 Save Analysis to History", type="primary", use_container_width=True, help="Save this match assessment, skills parsed, and feedback to your personal history."):
                 with st.spinner("💾 Archiving analysis record..."):
                     db = _get_db()
+                    db.sync_auth_session()
                     filename = st.session_state.get("uploaded_file_name", "resume.pdf")
                     parse_result = st.session_state.get("parse_result")
                     resume_text = parse_result.text if parse_result else ""
@@ -1400,7 +1399,9 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
                 "claude":     ("✅", "Powered by Anthropic Claude"),
                 "claude_api": ("✅", "Powered by Anthropic Claude"),
                 "gemini":     ("✅", "Powered by Google Gemini"),
-                "rule_based": ("ℹ️", "Rule-based feedback — add GEMINI_API_KEY or ANTHROPIC_API_KEY to .streamlit/secrets.toml for AI-powered feedback"),
+                "groq":       ("⚡", "Powered by Groq Llama (Backup)"),
+                "openrouter": ("⚡", "Powered by OpenRouter Gemma (Backup)"),
+                "rule_based": ("ℹ️", "Rule-based feedback — add GEMINI_API_KEY, GROQ_API_KEY, or OPENROUTER_API_KEY to secrets.toml for AI-powered feedback"),
             }
             _icon, _label = _provider_labels.get(source, ("ℹ️", f"Provider: {source}"))
             if source == "rule_based":
@@ -1782,11 +1783,8 @@ def render_welcome_stage():
     """Glow-effect welcome page with integrated sign-in/up/guest onboarding."""
     st.markdown("""
     <div class="hero-container animate-in" style="text-align: center; padding: 2rem 1rem;">
-        <h1 style="font-size: 2.8rem; margin-bottom: 0.5rem; background: linear-gradient(135deg, #6C63FF, #43E97B); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">🎯 Deep Career Coach</h1>
-        <p class="hero-subtitle" style="font-size: 1.15rem; max-width: 750px; margin: 0 auto 1.5rem auto; color: #A1A1AA; line-height: 1.6;">
-            Get an instant AI-powered match score, deep skill gap analysis, 
-            personalized learning roadmaps, and chat with your smart career coach.
-        </p>
+        <h1 style="font-size: 2.8rem; margin-bottom: 0.5rem; background: linear-gradient(135deg, #6C63FF 0%, #FF6584 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center;">🎯 Deep Career Coach</h1>
+        <p class="hero-subtitle" style="text-align: center; margin-left: auto; margin-right: auto; font-size: 1.15rem; max-width: 750px; color: #A1A1AA; line-height: 1.6;">Get an instant AI-powered match score, deep skill gap analysis, personalized learning roadmaps, and chat with your smart career coach.</p>
     </div>
     """, unsafe_allow_html=True)
 

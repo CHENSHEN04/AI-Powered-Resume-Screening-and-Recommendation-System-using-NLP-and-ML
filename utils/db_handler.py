@@ -8,6 +8,67 @@ import streamlit as st
 from supabase import create_client, Client
 from typing import Optional, Dict, Any, List
 import os
+from pathlib import Path
+
+def _read_secrets_toml_direct(key):
+    """Fallback reader to read .streamlit/secrets.toml directly when running outside Streamlit."""
+    for base in [Path.cwd(), *Path.cwd().parents]:
+        toml_path = base / ".streamlit" / "secrets.toml"
+        if not toml_path.exists():
+            continue
+        try:
+            for line in toml_path.read_text(encoding="utf-8").splitlines():
+                clean = line.strip()
+                if not clean or clean.startswith("#") or "=" not in clean:
+                    continue
+                name, value = clean.split("=", 1)
+                if name.strip().lower() == key.lower():
+                    return value.strip().strip('"').strip("'")
+        except OSError:
+            continue
+    return None
+
+def _read_dotenv_value(key):
+    """Small .env reader so local development works without adding python-dotenv."""
+    for base in [Path.cwd(), *Path.cwd().parents]:
+        env_path = base / ".env"
+        if not env_path.exists():
+            continue
+        try:
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                clean = line.strip()
+                if not clean or clean.startswith("#") or "=" not in clean:
+                    continue
+                name, value = clean.split("=", 1)
+                if name.strip() == key:
+                    return value.strip().strip('"').strip("'")
+        except OSError:
+            continue
+    return None
+
+def _secret(key):
+    v = os.environ.get(key)
+    if not v:
+        try:
+            v = st.secrets.get(key)
+            if not v:
+                # Iterate sections and check if key exists inside nested dicts/configs
+                for section in st.secrets.keys():
+                    try:
+                        sec_val = st.secrets[section]
+                        if isinstance(sec_val, dict) and key in sec_val:
+                            return sec_val[key]
+                        elif hasattr(sec_val, "get") and sec_val.get(key):
+                            return sec_val.get(key)
+                    except:
+                        pass
+        except:
+            pass
+    if not v:
+        v = _read_dotenv_value(key)
+    if not v:
+        v = _read_secrets_toml_direct(key)
+    return v
 
 class DatabaseManager:
     """
@@ -34,12 +95,32 @@ class DatabaseManager:
     def _init_client(self) -> Optional[Client]:
         """Initialize Supabase client using secrets."""
         try:
-            url = st.secrets["supabase"]["url"]
-            key = st.secrets["supabase"]["anon_key"]
+            url = _secret("SUPABASE_URL") or _secret("url")
+            key = _secret("SUPABASE_ANON_KEY") or _secret("anon_key")
+            
+            # If still None, try to read st.secrets["supabase"] explicitly
+            if not url or not key:
+                try:
+                    url = st.secrets["supabase"]["url"]
+                    key = st.secrets["supabase"]["anon_key"]
+                except Exception:
+                    pass
+                    
+            if not url or not key:
+                import logging
+                logging.getLogger(__name__).warning("Supabase URL or Key not found in secrets.")
+                return None
+                
             return create_client(url, key)
         except Exception as e:
-            # log_error skipped here to avoid circular dep or missing logger
+            import logging
+            logging.getLogger(__name__).error(f"Failed to initialize Supabase client: {e}")
+            try:
+                st.session_state["supabase_init_error"] = str(e)
+            except Exception:
+                pass
             return None
+
 
     # --- Authentication Methods ---
     
@@ -147,17 +228,22 @@ class DatabaseManager:
         """
         if not self.supabase: return
         
-        # 1. Insert Resume
-        resume_entry = {
-            "user_id": user_id,
-            "filename": analysis_data["filename"],
-            "storage_path": analysis_data["storage_path"],
-            "parsed_text": analysis_data["parsed_text"],
-            "page_count": analysis_data["page_count"],
-            "confidence_score": analysis_data["confidence_score"],
-            "predicted_role": analysis_data["predicted_role"],
-            "match_score": analysis_data["match_score"]
-        }
+        # Ensure native Python types to prevent JSON serialization errors with numpy types
+        try:
+            resume_entry = {
+                "user_id": user_id,
+                "filename": str(analysis_data["filename"]),
+                "storage_path": str(analysis_data["storage_path"]),
+                "parsed_text": str(analysis_data["parsed_text"]) if analysis_data.get("parsed_text") else None,
+                "page_count": int(analysis_data["page_count"]) if analysis_data.get("page_count") is not None else None,
+                "confidence_score": float(analysis_data["confidence_score"]) if analysis_data.get("confidence_score") is not None else None,
+                "predicted_role": str(analysis_data["predicted_role"]) if analysis_data.get("predicted_role") else None,
+                "match_score": float(analysis_data["match_score"]) if analysis_data.get("match_score") is not None else None
+            }
+        except Exception as cast_err:
+            import logging
+            logging.error(f"Failed to cast resume analysis data to native types: {cast_err}")
+            return None
         
         try:
             response = self.supabase.table("resumes").insert(resume_entry).execute()
@@ -168,7 +254,7 @@ class DatabaseManager:
                 # 2. Insert Skills (inside independent try-except to avoid aborting the save if RLS fails)
                 try:
                     skills_entries = [
-                        {"resume_id": resume_id, "skill_name": s["name"], "category": s["category"]}
+                        {"resume_id": resume_id, "skill_name": str(s["name"]), "category": str(s["category"])}
                         for s in analysis_data.get("skills", [])
                     ]
                     
@@ -180,7 +266,8 @@ class DatabaseManager:
                     
                 return resume_id
         except Exception as e:
-             # Just return None for now or log error
+            import logging
+            logging.error(f"ERROR SAVING RESUME ANALYSIS: {e}")
             return None
         return None
 
@@ -330,7 +417,9 @@ class DatabaseManager:
 
     def save_custom_role(self, role_title: str, role_slug: str,
                          required_skills: list, recommended_skills: list,
-                         nice_to_have_skills: list) -> tuple:
+                         nice_to_have_skills: list,
+                         salary_ranges: dict = None,
+                         learning_resources: dict = None) -> tuple:
         """
         Save a user-defined job role to job_categories + market_standards.
         Uses separate SELECT after each write — works with all supabase-py versions.
@@ -383,13 +472,31 @@ class DatabaseManager:
                         "job_category_id": cat_id, "skill_id": skill_id,
                         "importance_level": importance
                     }).execute()
-                    verify = self.supabase.table("market_standards").select("id")                     .eq("job_category_id", cat_id).eq("skill_id", skill_id).execute()
+                    verify = self.supabase.table("market_standards").select("id")                         .eq("job_category_id", cat_id).eq("skill_id", skill_id).execute()
                     if verify.data:
                         saved_count += 1
                 else:
                     saved_count += 1
             if saved_count == 0:
                 return False, "Role was created, but no skill coverage rows were saved. Check Supabase RLS policies for skills and market_standards."
+
+            # Non-blocking Write Step 4: Save Role Salary
+            if salary_ranges:
+                try:
+                    self.save_role_salary(role_slug, salary_ranges)
+                except Exception as sal_err:
+                    import logging
+                    logging.warning(f"Failed to save custom role salary: {sal_err}")
+
+            # Non-blocking Write Step 5: Save Learning Resources
+            if learning_resources:
+                for skill_name, resources in learning_resources.items():
+                    try:
+                        self.save_learning_resources(skill_name, resources)
+                    except Exception as res_err:
+                        import logging
+                        logging.warning(f"Failed to save learning resources for skill {skill_name}: {res_err}")
+
             return True, None
         except Exception as e:
             return False, str(e)

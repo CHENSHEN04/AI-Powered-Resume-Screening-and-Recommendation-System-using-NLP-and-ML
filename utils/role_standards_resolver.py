@@ -7,8 +7,9 @@ deterministic fallback when AI is unavailable or too generic.
 """
 
 import re
+import json
+from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple
-
 
 DEFAULT_WEIGHTS = {"required": 1.0, "recommended": 0.6, "nice_to_have": 0.3}
 GENERIC_FALLBACK_SKILLS = {
@@ -46,6 +47,40 @@ RECOMMENDED_HINTS = (
 NICE_HINTS = ("bonus", "nice to have", "optional", "would be a plus")
 
 
+def load_all_known_skills() -> Set[str]:
+    """Dynamically load all skills from market_standards.json and Database to expand vocabulary."""
+    skills = set(COMMON_SKILLS)
+    # Load from market_standards.json
+    try:
+        path = Path("data/market_standards.json")
+        if path.exists():
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                for cat in data.get("job_categories", {}).values():
+                    for group in ["required_skills", "recommended_skills", "nice_to_have", "nice_to_have_skills"]:
+                        for s in cat.get(group, []):
+                            if s:
+                                skills.add(s.lower().strip())
+    except Exception:
+        pass
+    # Load from Database
+    try:
+        from utils.db_handler import DatabaseManager
+        db = DatabaseManager()
+        if db.supabase:
+            res = db.supabase.table("skills").select("name").execute()
+            if res.data:
+                for row in res.data:
+                    skills.add(row["name"].lower().strip())
+    except Exception:
+        pass
+    return skills
+
+
+# Globally cache the dynamic expanded vocabulary
+DYNAMIC_COMMON_SKILLS = load_all_known_skills()
+
+
 def normalize_role_slug(role_title: str) -> str:
     """Convert a role title into a stable lowercase slug."""
     clean = re.sub(r"[^a-zA-Z0-9]+", "_", role_title.strip().lower())
@@ -67,6 +102,7 @@ def normalize_standards(raw: Optional[Dict], role_title: str, source: str) -> Di
         "nice_to_have_skills": nice,
         "salary_ranges": raw.get("salary_ranges", {}),
         "weights": raw.get("weights") or DEFAULT_WEIGHTS,
+        "learning_resources": raw.get("learning_resources", {}),
         "_source": source,
     }
 
@@ -108,6 +144,10 @@ def resolve_role_standards(
             generated = AIRoleStandardGenerator().generate_standards(title)
             standards = normalize_standards(generated, title, "ai")
             if is_standards_usable(standards):
+                # Generate learning resources for required/recommended skills
+                skills_for_resources = standards.get("required_skills", []) + standards.get("recommended_skills", [])
+                resources = generate_resources_for_skills(skills_for_resources)
+                standards["learning_resources"] = resources
                 return standards, None
         except Exception:
             pass
@@ -115,11 +155,23 @@ def resolve_role_standards(
     if jd_text and jd_text.strip():
         standards = standards_from_jd(title, jd_text)
         if is_standards_usable(standards):
+            # Try to generate learning resources for fallback JD standards too
+            skills_for_resources = standards.get("required_skills", []) + standards.get("recommended_skills", [])
+            resources = generate_resources_for_skills(skills_for_resources)
+            standards["learning_resources"] = resources
             return standards, None
 
+    # Both failed
+    if not prefer_ai or not jd_text or not jd_text.strip():
+        return None, (
+            f"Unable to create usable skill coverage for '{title}'. "
+            "Please provide a detailed Job Description (JD) to extract fallback skills."
+        )
+
     return None, (
-        "Unable to create usable skill coverage for this role. "
-        "Provide a detailed job description or enable AI role generation."
+        f"Unable to create usable skill coverage for '{title}'. "
+        "The job description provided does not contain extractable skills. "
+        "Please provide a more detailed Job Description."
     )
 
 
@@ -168,11 +220,11 @@ def extract_skill_candidates(text: str) -> List[str]:
     found: List[str] = []
     text_lower = text.lower()
 
-    for skill in sorted(COMMON_SKILLS, key=len, reverse=True):
+    for skill in sorted(DYNAMIC_COMMON_SKILLS, key=len, reverse=True):
         if re.search(r"(?<![a-z0-9])" + re.escape(skill) + r"(?![a-z0-9])", text_lower):
             found.append(_canonical_skill(skill))
 
-    acronym_matches = re.findall(r"\b[A-Z][A-Z0-9+#./-]{1,8}\b", text)
+    acronym_matches = re.findall(r"\b[A-Z][A-Za-z0-9+#./-]{1,8}\b", text)
     found.extend(_canonical_skill(m) for m in acronym_matches if not _is_noise(m))
 
     for chunk in re.split(r"[,;|()\n]", text):
@@ -189,6 +241,32 @@ def skill_mentioned_in_text(skill: str, text: str) -> bool:
         return False
     pattern = r"(?<![a-z0-9])" + re.escape(skill.lower()) + r"(?![a-z0-9])"
     return re.search(pattern, text.lower()) is not None
+
+
+def generate_resources_for_skills(skills: List[str]) -> Dict[str, List[Dict]]:
+    """Helper to generate learning resources for resolved skills."""
+    resources = {}
+    for skill in skills:
+        try:
+            from utils.ai_assistant import _call_ai
+            prompt = f"""You are an expert technical educator. For the skill: "{skill}"
+Generate 2 high-quality recommended learning resources (e.g. online courses, official tutorials, or books).
+Return ONLY a valid JSON array of objects, where each object has these exact keys:
+- "title": "concise title of the course/tutorial"
+- "url": "a high-quality valid link (e.g., to Coursera, Udemy, or official documentation like react.dev or python.org)"
+- "type": "Course", "Article", "Video", or "Project"
+- "difficulty": "Beginner", "Intermediate", or "Advanced"
+
+Return ONLY valid JSON. No markdown block backticks, no extra text."""
+            raw = _call_ai(prompt, max_tokens=512)
+            if raw:
+                clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+                parsed = json.loads(clean)
+                if isinstance(parsed, list) and len(parsed) > 0:
+                    resources[skill] = parsed
+        except Exception:
+            pass
+    return resources
 
 
 def _bucket_for_line(line: str) -> str:
@@ -210,10 +288,13 @@ def _clean_candidate(chunk: str) -> Optional[str]:
     lower = chunk.lower()
     if _is_noise(lower):
         return None
-    if lower in COMMON_SKILLS:
+    if lower in DYNAMIC_COMMON_SKILLS:
         return _canonical_skill(lower)
     if re.fullmatch(r"[A-Z][A-Za-z0-9+#./-]*(?:\s[A-Z][A-Za-z0-9+#./-]*){0,2}", chunk):
         return chunk
+    if re.fullmatch(r"[a-zA-Z0-9+#./-]+(?:\s[a-zA-Z0-9+#./-]+){0,1}", chunk):
+        if any(c in chunk for c in "+#./-") or (len(chunk) >= 3 and not _is_noise(lower)):
+            return _canonical_skill(chunk)
     return None
 
 
@@ -230,7 +311,15 @@ def _canonical_skill(skill: str) -> str:
         "sap": "SAP",
     }
     lower = skill.lower().strip()
-    return special.get(lower, skill.strip().title())
+    if lower in special:
+        return special[lower]
+    
+    stripped = skill.strip()
+    # Preserve original case if the skill already has mixed-case (e.g. MLflow, spaCy) or is all uppercase
+    if (any(c.isupper() for c in stripped) and any(c.islower() for c in stripped)) or stripped.isupper():
+        return stripped
+        
+    return stripped.title()
 
 
 def _dedupe(values: Iterable[str]) -> List[str]:
