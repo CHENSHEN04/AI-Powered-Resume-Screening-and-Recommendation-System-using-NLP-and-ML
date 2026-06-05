@@ -186,15 +186,26 @@ class GapAnalyzer:
             }
             
         role_data = normalize_standards(role_data, target_role, role_data.get("_source", "standards"))
-        required = role_data.get("required_skills", [])
-        recommended = role_data.get("recommended_skills", [])
-        nice_to_have = role_data.get("nice_to_have", [])
+        
+        # Filter out generic noise words
+        noise_words = {
+            "intern", "internship", "key", "key responsibilities", "provide", "support", 
+            "action", "champion", "enabler", "ensure", "enter", "responsibilities", 
+            "steward", "timely", "verification", "review", "approve", "monitor", 
+            "service", "quality", "integrity", "common", "general", "basic", "must",
+            "required", "recommended", "nice to have", "competency", "role", "task",
+            "job", "candidate", "employee", "staff", "skills", "ability", "ability to"
+        }
+        
+        required = [s for s in role_data.get("required_skills", []) if s.lower().strip() not in noise_words]
+        recommended = [s for s in role_data.get("recommended_skills", []) if s.lower().strip() not in noise_words]
+        nice_to_have = [s for s in role_data.get("nice_to_have", []) if s.lower().strip() not in noise_words]
         weights = role_data.get("weights", {"required": 1.0, "recommended": 0.6, "nice_to_have": 0.3})
         
-        # Calculate gaps
-        missing_required = [s for s in required if s.lower() not in user_skills_set]
-        missing_recommended = [s for s in recommended if s.lower() not in user_skills_set]
-        missing_nice = [s for s in nice_to_have if s.lower() not in user_skills_set]
+        # Calculate gaps using smart skill matching
+        missing_required = [s for s in required if not self._is_skill_matched(s, user_skills_set)]
+        missing_recommended = [s for s in recommended if not self._is_skill_matched(s, user_skills_set)]
+        missing_nice = [s for s in nice_to_have if not self._is_skill_matched(s, user_skills_set)]
         
         # Calculate weighted match percentage
         total_weight = (len(required) * weights["required"] + 
@@ -299,35 +310,169 @@ class GapAnalyzer:
                 if skill_key in all_resources:
                     paths[skill] = all_resources[skill_key]
                     
-        # 3. Dynamic AI Fallback (Knowledge Harvesting & Collaborative database loop)
-        for skill in missing_skills:
-            if skill not in paths:
-                try:
-                    from utils.ai_assistant import _call_ai
-                    prompt = f"""You are an expert technical educator. For the skill: "{skill}"
-Generate 2 high-quality recommended learning resources (e.g. online courses, official tutorials, or books).
-Return ONLY a valid JSON array of objects, where each object has these exact keys:
+        # 3. Dynamic AI Fallback (Knowledge Harvesting & Collaborative database batching)
+        missing_unresolved = [skill for skill in missing_skills if skill not in paths]
+        if missing_unresolved:
+            try:
+                from utils.ai_assistant import _call_ai
+                skills_str = ", ".join(f'"{s}"' for s in missing_unresolved)
+                prompt = f"""You are an expert technical educator. For the following skills: [{skills_str}]
+Generate exactly 2 high-quality recommended learning resources (e.g. online courses, official tutorials, or books) for each skill.
+Return ONLY a valid JSON object mapping each skill name to its array of resource objects. Each resource object must have these exact keys:
 - "title": "concise title of the course/tutorial"
 - "url": "a high-quality valid link (e.g., to Coursera, Udemy, or official documentation like react.dev or python.org)"
 - "type": "Course", "Article", "Video", or "Project"
 - "difficulty": "Beginner", "Intermediate", or "Advanced"
 
+Example output structure:
+{{
+  "SkillName": [
+    {{
+      "title": "Course Name",
+      "url": "https://example.com",
+      "type": "Course",
+      "difficulty": "Beginner"
+    }},
+    {{
+      "title": "Tutorial Name",
+      "url": "https://example.com",
+      "type": "Video",
+      "difficulty": "Intermediate"
+    }}
+  ]
+}}
+
 Return ONLY valid JSON. No markdown block backticks, no extra text."""
-                    raw = _call_ai(prompt, max_tokens=512)
-                    if raw:
-                        clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-                        resources = json.loads(clean)
-                        if isinstance(resources, list) and len(resources) > 0:
-                            paths[skill] = resources
-                            # Write back to Supabase! (Collective Intelligence loop!)
-                            if self.db_manager:
-                                try:
-                                    self.db_manager.save_learning_resources(skill, resources)
-                                except Exception as db_save_err:
-                                    import logging
-                                    logging.warning(f"Failed to auto-harvest dynamic learning resources to DB: {db_save_err}")
-                except Exception as e:
-                    import logging
-                    logging.warning(f"Failed to generate dynamic learning resources for skill {skill}: {e}")
+                raw = _call_ai(prompt, max_tokens=2048)
+                if raw:
+                    clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+                    parsed = json.loads(clean)
+                    if isinstance(parsed, dict):
+                        skill_map = {s.lower(): s for s in missing_unresolved}
+                        for k, v in parsed.items():
+                            k_lower = k.lower()
+                            if k_lower in skill_map and isinstance(v, list) and len(v) > 0:
+                                mapped_skill = skill_map[k_lower]
+                                paths[mapped_skill] = v
+                                # Write back to Supabase!
+                                if self.db_manager:
+                                    try:
+                                        self.db_manager.save_learning_resources(mapped_skill, v)
+                                    except Exception as db_save_err:
+                                        import logging
+                                        logging.warning(f"Failed to auto-harvest dynamic learning resources to DB: {db_save_err}")
+            except Exception as e:
+                import logging
+                logging.warning(f"Failed to generate dynamic learning resources in batch: {e}")
                 
         return paths
+
+    def _is_skill_matched(self, target_skill: str, user_skills_set: Set[str]) -> bool:
+        """
+        Check if a target skill is matched in the user's extracted skills set.
+        Handles abbreviations (e.g., MS Office -> Microsoft Office), equivalent groups 
+        (e.g., Chinese -> Mandarin, SAP -> ERP), stemming/substrings (e.g., Analysis -> Analytical),
+        and educational hierarchy (Degree satisfies Diploma).
+        """
+        ts_lower = target_skill.lower().strip()
+        
+        # 1. Direct match
+        if ts_lower in user_skills_set:
+            return True
+            
+        # 2. Educational Hierarchy Match (Degree satisfies Diploma)
+        edu_hierarchy = {
+            "diploma": 1,
+            "degree": 2, "bachelor": 2, "bsc": 2, "ba": 2, "b.s.": 2, "b.a.": 2, "undergraduate": 2,
+            "master": 3, "msc": 3, "ma": 3, "mba": 3, "m.s.": 3, "m.a.": 3, "postgraduate": 3,
+            "phd": 4, "doctor": 4, "doctorate": 4, "ph.d.": 4
+        }
+        
+        target_edu_level = None
+        for term, level in edu_hierarchy.items():
+            if term in ts_lower:
+                target_edu_level = level
+                break
+                
+        if target_edu_level is not None:
+            for u_skill in user_skills_set:
+                for term, level in edu_hierarchy.items():
+                    if term in u_skill and level >= target_edu_level:
+                        return True
+                        
+        # 3. Semantic / Equivalent / Alias groups (asymmetric mapping)
+        office_suite = {
+            "ms office", "microsoft office", "office", "ms word", "word", "ms excel", "excel", 
+            "powerpoint", "microsoft excel", "microsoft word", "microsoft powerpoint", "ms powerpoint"
+        }
+        excel_group = {"excel", "ms excel", "microsoft excel", "ms office", "microsoft office", "office"}
+        word_group = {"word", "ms word", "microsoft word", "ms office", "microsoft office", "office"}
+        powerpoint_group = {"powerpoint", "ms powerpoint", "microsoft powerpoint", "ms office", "microsoft office", "office"}
+        
+        erp_suite = {"erp", "enterprise resource planning", "sap", "oracle"}
+        sap_group = {"sap", "erp", "enterprise resource planning"}
+        oracle_group = {"oracle", "erp", "enterprise resource planning"}
+        
+        chinese_group = {"chinese", "mandarin", "mandarin speaker"}
+        analysis_group = {"analysis", "analytical", "analytics", "analyze", "data analytics"}
+        
+        asymmetric_groups = {
+            "ms office": office_suite,
+            "microsoft office": office_suite,
+            "office": office_suite,
+            "excel": excel_group,
+            "ms excel": excel_group,
+            "microsoft excel": excel_group,
+            "word": word_group,
+            "ms word": word_group,
+            "microsoft word": word_group,
+            "powerpoint": powerpoint_group,
+            "ms powerpoint": powerpoint_group,
+            "microsoft powerpoint": powerpoint_group,
+            
+            "erp": erp_suite,
+            "enterprise resource planning": erp_suite,
+            "sap": sap_group,
+            "oracle": oracle_group,
+            
+            "chinese": chinese_group,
+            "mandarin": chinese_group,
+            "mandarin speaker": chinese_group,
+            
+            "analysis": analysis_group,
+            "analytical": analysis_group,
+            "analytics": analysis_group,
+            "analyze": analysis_group,
+            "data analytics": analysis_group,
+        }
+        
+        if ts_lower in asymmetric_groups:
+            allowed_user_skills = asymmetric_groups[ts_lower]
+            if any(item in user_skills_set for item in allowed_user_skills):
+                return True
+                    
+        # 4. Suffix / Stemming / Partial matches (e.g. "analytical skills" matches "analysis")
+        false_positives = {
+            ("java", "javascript"),
+            ("word", "wordpress"),
+            ("rust", "trust"),
+            ("git", "github"),
+            ("sql", "nosql"),
+            ("sql", "mysql"),
+            ("sql", "postgresql"),
+            ("net", "internet")
+        }
+        for u_skill in user_skills_set:
+            if len(ts_lower) >= 4 and len(u_skill) >= 4:
+                if ts_lower in u_skill or u_skill in ts_lower:
+                    if (ts_lower, u_skill) not in false_positives and (u_skill, ts_lower) not in false_positives:
+                        return True
+                # Stemming check
+                if ts_lower.startswith("analyt") and u_skill.startswith("analyt"):
+                    return True
+                if ts_lower.startswith("communicat") and u_skill.startswith("communicat"):
+                    return True
+                if ts_lower.startswith("program") and u_skill.startswith("program"):
+                    return True
+                    
+        return False

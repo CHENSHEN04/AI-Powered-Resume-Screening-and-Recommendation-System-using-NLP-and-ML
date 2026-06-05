@@ -119,6 +119,10 @@ class SemanticMatcher:
             cat: svm_weight * svm_scores.get(cat, 0.0) + bert_weight * bert_scores.get(cat, 0.0)
             for cat in all_cats
         }
+        # Normalize combined scores to sum to 1.0 to form a valid probability distribution
+        total = sum(combined.values())
+        if total > 0:
+            combined = {cat: val / total for cat, val in combined.items()}
         return dict(sorted(combined.items(), key=lambda x: x[1], reverse=True))
 
     def find_best_match(self, query: str, candidates: Dict[str, str]):

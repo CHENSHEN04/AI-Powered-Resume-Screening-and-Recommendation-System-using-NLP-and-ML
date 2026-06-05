@@ -67,8 +67,8 @@ export default function Dashboard() {
             {/* Header */}
             <header className="mb-8 flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-extrabold tracking-tight">Career Dashboard</h1>
-                    <p className="text-muted-foreground">
+                    <h1 className="text-4xl font-extrabold tracking-tight">Career Dashboard</h1>
+                    <p className="text-base text-muted-foreground mt-1">
                         Analysis for <span className="font-semibold text-primary">{data.filename}</span>
                     </p>
                 </div>
@@ -79,26 +79,26 @@ export default function Dashboard() {
 
             {/* Metrics Row */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-                <Card>
+                <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-300 transform hover:-translate-y-1">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Target Role</CardTitle>
+                        <CardTitle className="text-base font-semibold">Target Role</CardTitle>
                         <Target className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-primary">{data.predicted_role}</div>
-                        <p className="text-xs text-muted-foreground">
+                        <div className="text-3xl font-extrabold text-primary">{data.predicted_role}</div>
+                        <p className="text-sm text-muted-foreground mt-0.5">
                             {(data.confidence_score * 100).toFixed(0)}% Confidence
                         </p>
                     </CardContent>
                 </Card>
-                <Card>
+                <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-300 transform hover:-translate-y-1">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Match Score</CardTitle>
+                        <CardTitle className="text-base font-semibold">Match Score</CardTitle>
                         <Zap className="h-4 w-4 text-yellow-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{data.analysis.match_percentage.toFixed(0)}%</div>
-                        <div className="w-full bg-secondary h-2 mt-2 rounded-full overflow-hidden">
+                        <div className="text-3xl font-extrabold">{data.analysis.match_percentage.toFixed(0)}%</div>
+                        <div className="w-full bg-secondary h-2.5 mt-2.5 rounded-full overflow-hidden">
                             <div
                                 className="bg-yellow-500 h-full transition-all duration-1000"
                                 style={{ width: `${data.analysis.match_percentage}%` }}
@@ -106,26 +106,26 @@ export default function Dashboard() {
                         </div>
                     </CardContent>
                 </Card>
-                <Card>
+                <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-300 transform hover:-translate-y-1">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Skills Identified</CardTitle>
+                        <CardTitle className="text-base font-semibold">Skills Identified</CardTitle>
                         <BrainCircuit className="h-4 w-4 text-blue-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{data.skills.length}</div>
-                        <p className="text-xs text-muted-foreground">Extracted from resume</p>
+                        <div className="text-3xl font-extrabold">{data.skills.length}</div>
+                        <p className="text-sm text-muted-foreground mt-0.5">Extracted from resume</p>
                     </CardContent>
                 </Card>
-                <Card>
+                <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-300 transform hover:-translate-y-1">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Critical Gaps</CardTitle>
+                        <CardTitle className="text-base font-semibold">Critical Gaps</CardTitle>
                         <ShieldCheck className="h-4 w-4 text-red-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-destructive">
+                        <div className="text-3xl font-extrabold text-destructive">
                             {data.analysis.missing_required.length}
                         </div>
-                        <p className="text-xs text-muted-foreground">Must-have skills missing</p>
+                        <p className="text-sm text-muted-foreground mt-0.5">Must-have skills missing</p>
                     </CardContent>
                 </Card>
             </div>
@@ -134,7 +134,7 @@ export default function Dashboard() {
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
 
                 {/* Left Col: Charts (4 cols) */}
-                <Card className="col-span-4">
+                <Card className="col-span-4 hover:shadow-md hover:border-primary/20 transition-all duration-300">
                     <CardHeader>
                         <CardTitle>Profile Radar</CardTitle>
                         <CardDescription>How you stack up against the ideal candidate profile.</CardDescription>
@@ -144,7 +144,7 @@ export default function Dashboard() {
                             <ResponsiveContainer width="100%" height="100%">
                                 <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
                                     <PolarGrid stroke="hsl(var(--muted-foreground))" strokeOpacity={0.2} />
-                                    <PolarAngleAxis dataKey="subject" tick={{ fill: 'hsl(var(--foreground))', fontSize: 12 }} />
+                                    <PolarAngleAxis dataKey="subject" tick={{ fill: 'hsl(var(--foreground))', fontSize: 13 }} />
                                     <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
                                     <Radar
                                         name="Candidate"
@@ -163,7 +163,7 @@ export default function Dashboard() {
                 </Card>
 
                 {/* Right Col: Gaps & Actions (3 cols) */}
-                <Card className="col-span-3">
+                <Card className="col-span-3 hover:shadow-md hover:border-primary/20 transition-all duration-300">
                     <CardHeader>
                         <CardTitle>Missing Skills</CardTitle>
                         <CardDescription>Priority areas for improvement.</CardDescription>
@@ -171,27 +171,27 @@ export default function Dashboard() {
                     <CardContent>
                         {data.analysis.missing_required.length > 0 ? (
                             <div className="space-y-4">
-                                <h4 className="text-sm font-semibold text-destructive uppercase tracking-wide">Critical</h4>
-                                <div className="flex flex-wrap gap-2">
+                                <h4 className="text-base font-bold text-destructive uppercase tracking-wider">Critical</h4>
+                                <div className="flex flex-wrap gap-2.5">
                                     {data.analysis.missing_required.map(skill => (
-                                        <span key={skill} className="px-2 py-1 rounded-md bg-destructive/10 text-destructive text-sm font-medium border border-destructive/20">
+                                        <span key={skill} className="px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive text-base font-medium border border-destructive/20 transition-all duration-150 cursor-default hover:scale-105 hover:bg-destructive/15">
                                             {skill}
                                         </span>
                                     ))}
                                 </div>
                             </div>
                         ) : (
-                            <div className="p-4 bg-green-500/10 text-green-600 rounded-lg border border-green-500/20">
+                            <div className="p-4 bg-green-500/10 text-green-600 text-base rounded-lg border border-green-500/20">
                                 🎉 No critical skill gaps found!
                             </div>
                         )}
 
                         {data.analysis.missing_recommended.length > 0 && (
                             <div className="space-y-4 mt-6">
-                                <h4 className="text-sm font-semibold text-yellow-600 dark:text-yellow-400 uppercase tracking-wide">Recommended</h4>
-                                <div className="flex flex-wrap gap-2">
+                                <h4 className="text-base font-bold text-yellow-600 dark:text-yellow-400 uppercase tracking-wider">Recommended</h4>
+                                <div className="flex flex-wrap gap-2.5">
                                     {data.analysis.missing_recommended.map(skill => (
-                                        <span key={skill} className="px-2 py-1 rounded-md bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 text-sm font-medium border border-yellow-500/20">
+                                        <span key={skill} className="px-3 py-1.5 rounded-lg bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 text-base font-medium border border-yellow-500/20 transition-all duration-150 cursor-default hover:scale-105 hover:bg-yellow-500/15">
                                             {skill}
                                         </span>
                                     ))}
@@ -206,7 +206,7 @@ export default function Dashboard() {
             <div className="grid gap-4 md:grid-cols-2 mt-8">
                 <ChatWidget className="h-[400px]" />
 
-                <Card className="h-[400px] flex flex-col">
+                <Card className="h-[400px] flex flex-col hover:shadow-md hover:border-primary/20 transition-all duration-300">
                     <CardHeader>
                         <CardTitle>Learning Resources</CardTitle>
                     </CardHeader>
@@ -215,10 +215,10 @@ export default function Dashboard() {
                             <div className="space-y-4">
                                 {Object.entries(data.analysis.learning_paths).slice(0, 10).map(([skill, resources]) => (
                                     <div key={skill}>
-                                        <h4 className="text-sm font-semibold mb-1 sticky top-0 bg-card py-1">{skill}</h4>
+                                        <h4 className="text-base font-bold mb-2 sticky top-0 bg-card py-1.5">{skill}</h4>
                                         <ul className="space-y-2">
                                             {resources.map((r, i) => (
-                                                <li key={i} className="text-sm text-muted-foreground bg-muted/50 p-2 rounded hover:bg-muted transition-colors">
+                                                <li key={i} className="text-base text-muted-foreground bg-muted/50 p-3 rounded-lg hover:bg-muted hover:text-foreground transition-all duration-150 shadow-sm border border-transparent hover:border-muted-foreground/10">
                                                     <a href={r.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
                                                         <span className="truncate">{r.title}</span>
                                                     </a>
@@ -229,7 +229,7 @@ export default function Dashboard() {
                                 ))}
                             </div>
                         ) : (
-                            <p className="text-sm text-muted-foreground">No specific resources found yet.</p>
+                            <p className="text-base text-muted-foreground">No specific resources found yet.</p>
                         )}
                     </CardContent>
                 </Card>

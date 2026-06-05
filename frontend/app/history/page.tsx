@@ -74,8 +74,8 @@ export default function HistoryPage() {
         <div className="min-h-[calc(100vh-3.5rem)] bg-background p-8">
             <header className="mb-8 flex items-center justify-between max-w-5xl mx-auto">
                 <div>
-                    <h1 className="text-3xl font-extrabold tracking-tight">Analysis History</h1>
-                    <p className="text-muted-foreground">Your past resume analyses</p>
+                    <h1 className="text-4xl font-extrabold tracking-tight">Analysis History</h1>
+                    <p className="text-base text-muted-foreground mt-1">Your past resume analyses</p>
                 </div>
                 <a href="/">
                     <Button variant="outline">
@@ -97,8 +97,8 @@ export default function HistoryPage() {
                 ) : history.length === 0 ? (
                     <div className="text-center py-20">
                         <FileText className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-                        <h3 className="text-xl font-semibold mb-2">No analyses yet</h3>
-                        <p className="text-muted-foreground mb-6">Upload a resume to get started!</p>
+                        <h3 className="text-2xl font-bold mb-3">No analyses yet</h3>
+                        <p className="text-base text-muted-foreground mb-6">Upload a resume to get started!</p>
                         <a href="/">
                             <Button>Upload Resume</Button>
                         </a>
@@ -106,7 +106,7 @@ export default function HistoryPage() {
                 ) : (
                     <div className="space-y-4">
                         {history.map((item) => (
-                            <Card key={item.id} className="hover:shadow-lg transition-shadow cursor-pointer">
+                            <Card key={item.id} className="hover:shadow-xl hover:border-primary/20 transition-all duration-300 transform hover:-translate-y-1 cursor-pointer">
                                 <CardContent className="p-6">
                                     <div className="flex items-start justify-between">
                                         <div className="flex items-center gap-4">
@@ -114,46 +114,46 @@ export default function HistoryPage() {
                                                 <FileText className="w-6 h-6 text-primary" />
                                             </div>
                                             <div>
-                                                <h3 className="font-semibold text-lg">{item.filename}</h3>
-                                                <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                                                    <span className="flex items-center gap-1">
-                                                        <Target className="w-3 h-3" />
+                                                <h3 className="font-bold text-xl">{item.filename}</h3>
+                                                <div className="flex items-center gap-4 mt-1.5 text-base text-muted-foreground">
+                                                    <span className="flex items-center gap-1.5">
+                                                        <Target className="w-4 h-4 text-muted-foreground/80" />
                                                         {item.predicted_role}
                                                     </span>
-                                                    <span className="flex items-center gap-1">
-                                                        <Calendar className="w-3 h-3" />
+                                                    <span className="flex items-center gap-1.5">
+                                                        <Calendar className="w-4 h-4 text-muted-foreground/80" />
                                                         {new Date(item.created_at).toLocaleDateString()}
                                                     </span>
                                                 </div>
                                             </div>
                                         </div>
 
-                                        <div className="flex items-center gap-6 text-right">
+                                        <div className="flex items-center gap-8 text-right">
                                             <div>
-                                                <p className="text-xs text-muted-foreground uppercase tracking-wide">Match</p>
-                                                <p className="text-xl font-bold text-primary">{item.match_score.toFixed(0)}%</p>
+                                                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Match</p>
+                                                <p className="text-2xl font-extrabold text-primary">{item.match_score.toFixed(0)}%</p>
                                             </div>
                                             <div>
-                                                <p className="text-xs text-muted-foreground uppercase tracking-wide">Confidence</p>
-                                                <p className="text-xl font-bold">{(item.confidence_score * 100).toFixed(0)}%</p>
+                                                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Confidence</p>
+                                                <p className="text-2xl font-extrabold">{(item.confidence_score * 100).toFixed(0)}%</p>
                                             </div>
                                             <div>
-                                                <p className="text-xs text-muted-foreground uppercase tracking-wide">Skills</p>
-                                                <p className="text-xl font-bold">{item.skills.length}</p>
+                                                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Skills</p>
+                                                <p className="text-2xl font-extrabold">{item.skills.length}</p>
                                             </div>
                                         </div>
                                     </div>
 
                                     {/* Skill tags */}
                                     {item.skills.length > 0 && (
-                                        <div className="mt-4 flex flex-wrap gap-1.5">
+                                        <div className="mt-4 flex flex-wrap gap-2">
                                             {item.skills.slice(0, 8).map(skill => (
-                                                <span key={skill} className="px-2 py-0.5 text-xs bg-secondary rounded-full text-muted-foreground">
+                                                <span key={skill} className="px-3 py-1 text-sm bg-secondary rounded-full text-muted-foreground font-medium transition-all duration-150 hover:bg-muted-foreground/10 hover:text-foreground cursor-default">
                                                     {skill}
                                                 </span>
                                             ))}
                                             {item.skills.length > 8 && (
-                                                <span className="px-2 py-0.5 text-xs bg-muted rounded-full text-muted-foreground">
+                                                <span className="px-3 py-1 text-sm bg-muted rounded-full text-muted-foreground font-medium">
                                                     +{item.skills.length - 8} more
                                                 </span>
                                             )}

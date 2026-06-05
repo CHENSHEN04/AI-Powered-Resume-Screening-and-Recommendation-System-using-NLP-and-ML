@@ -116,18 +116,63 @@ class TestGapAnalyzer:
         mock_exists.return_value = True
         mock_json_load.side_effect = [MOCK_MARKET_STANDARDS, MOCK_LEARNING_RESOURCES]
         
+        assert "strong profile" in result["recommendations"][0]
+
+    @patch('utils.gap_analyzer.json.load')
+    @patch('pathlib.Path.exists')
+    def test_analyze_gaps_missing_skills(self, mock_exists, mock_json_load):
+        """Test analysis with missing skills."""
+        mock_exists.return_value = True
+        mock_json_load.side_effect = [MOCK_MARKET_STANDARDS, MOCK_LEARNING_RESOURCES]
+        
+        analyzer = GapAnalyzer()
+        
+        # Missing JavaScript (Required) and TypeScript (Recommended)
+        user_skills = ["HTML", "CSS", "React"]
+        result = analyzer.analyze_gaps(user_skills, "Frontend Developer")
+        
+        assert "JavaScript" in result["missing_required"]
+        assert "TypeScript" in result["missing_recommended"]
+        assert result["match_percentage"] < 100.0
+        assert result["learning_paths"] is not None
+        # Should have resources for TypeScript (missing recommended) but maybe not JS (if not in mock resources)
+        # In our mock, TypeScript is present
+        assert "TypeScript" in result["learning_paths"]
+
+    @patch('utils.gap_analyzer.json.load')
+    @patch('pathlib.Path.exists')
+    def test_normalize_role_name_cases(self, mock_exists, mock_json_load):
+        """Test role name normalization."""
+        mock_exists.return_value = True
+        mock_json_load.side_effect = [MOCK_MARKET_STANDARDS, MOCK_LEARNING_RESOURCES]
+        
+        analyzer = GapAnalyzer()
+        
+        assert analyzer._normalize_role_name("Frontend Developer") == "frontend_developer"
+        assert analyzer._normalize_role_name("frontend_developer") == "frontend_developer"
+        assert analyzer._normalize_role_name("Data Scientist") == "data_scientist" # Default fallback snake_case
+
+    @patch('utils.gap_analyzer.json.load')
+    @patch('pathlib.Path.exists')
+    def test_invalid_role(self, mock_exists, mock_json_load):
+        """Test analysis with unknown role."""
+        mock_exists.return_value = True
+        mock_json_load.side_effect = [MOCK_MARKET_STANDARDS, MOCK_LEARNING_RESOURCES]
+        
         analyzer = GapAnalyzer()
         result = analyzer.analyze_gaps(["Python"], "Astronaut")
         
         assert result["error"] == "Role not found in standards"
         assert result["match_percentage"] == 0.0
 
+    @patch('utils.ai_assistant._call_ai')
     @patch('utils.gap_analyzer.json.load')
     @patch('pathlib.Path.exists')
-    def test_get_learning_resources(self, mock_exists, mock_json_load):
+    def test_get_learning_resources(self, mock_exists, mock_json_load, mock_call_ai):
         """Test fetching learning resources."""
         mock_exists.return_value = True
         mock_json_load.side_effect = [MOCK_MARKET_STANDARDS, MOCK_LEARNING_RESOURCES]
+        mock_call_ai.return_value = None
         
         analyzer = GapAnalyzer()
         missing = ["React", "UnknownLib"]
@@ -169,6 +214,46 @@ class TestGapAnalyzer:
         assert result["missing_required"] == ["Network Security"]
         assert result["missing_recommended"] == ["SIEM"]
         mock_db.save_custom_role.assert_called_once()
+
+    @patch('utils.gap_analyzer.json.load')
+    @patch('pathlib.Path.exists')
+    def test_is_skill_matched_false_positives(self, mock_exists, mock_json_load):
+        """Test that false-positive substring pairs are correctly rejected."""
+        mock_exists.return_value = True
+        mock_json_load.side_effect = [{"job_categories": {}}, {"resources": {}}]
+        
+        analyzer = GapAnalyzer()
+        
+        # Java should not match JavaScript
+        assert not analyzer._is_skill_matched("Java", {"javascript", "python"})
+        # Word should not match Wordpress
+        assert not analyzer._is_skill_matched("Word", {"wordpress", "html"})
+        # But normal substring matches should work (e.g. "Analytical skills" matches "analytical")
+        assert analyzer._is_skill_matched("analytical", {"analytical skills"})
+
+    @patch('utils.gap_analyzer.json.load')
+    @patch('pathlib.Path.exists')
+    def test_is_skill_matched_asymmetric_semantics(self, mock_exists, mock_json_load):
+        """Test asymmetric semantic matching for MS Office suites and individual apps."""
+        mock_exists.return_value = True
+        mock_json_load.side_effect = [{"job_categories": {}}, {"resources": {}}]
+        
+        analyzer = GapAnalyzer()
+        
+        # 1. Target "MS Office" matches user having "Microsoft Excel"
+        assert analyzer._is_skill_matched("MS Office", {"microsoft excel"})
+        # 2. Target "Excel" matches user having "MS Office"
+        assert analyzer._is_skill_matched("Excel", {"ms office"})
+        # 3. Target "Excel" does NOT match user having only "Word"
+        assert not analyzer._is_skill_matched("Excel", {"word"})
+        # 4. Target "SAP" matches user having "ERP" (since SAP is an ERP system)
+        assert analyzer._is_skill_matched("SAP", {"erp"})
+        # 5. Target "SAP" does NOT match user having only "Oracle"
+        assert not analyzer._is_skill_matched("SAP", {"oracle"})
+        # 6. Target "Mandarin" matches user having "Chinese"
+        assert analyzer._is_skill_matched("Mandarin", {"chinese"})
+
+
 
 
 class TestRoleStandardsResolver:

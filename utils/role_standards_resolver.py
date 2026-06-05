@@ -244,28 +244,61 @@ def skill_mentioned_in_text(skill: str, text: str) -> bool:
 
 
 def generate_resources_for_skills(skills: List[str]) -> Dict[str, List[Dict]]:
-    """Helper to generate learning resources for resolved skills."""
+    """Helper to generate learning resources for resolved skills in a single batched LLM request."""
+    if not skills:
+        return {}
+    
+    # Filter empty skills and remove duplicates
+    skills = sorted(list(set(s.strip() for s in skills if s and s.strip())))
+    if not skills:
+        return {}
+
     resources = {}
-    for skill in skills:
-        try:
-            from utils.ai_assistant import _call_ai
-            prompt = f"""You are an expert technical educator. For the skill: "{skill}"
-Generate 2 high-quality recommended learning resources (e.g. online courses, official tutorials, or books).
-Return ONLY a valid JSON array of objects, where each object has these exact keys:
+    try:
+        from utils.ai_assistant import _call_ai
+        import json
+        skills_str = ", ".join(f'"{s}"' for s in skills)
+        prompt = f"""You are an expert technical educator. For the following skills: [{skills_str}]
+Generate exactly 2 high-quality recommended learning resources (e.g. online courses, official tutorials, or books) for each skill.
+Return ONLY a valid JSON object mapping each skill name to its array of resource objects. Each resource object must have these exact keys:
 - "title": "concise title of the course/tutorial"
 - "url": "a high-quality valid link (e.g., to Coursera, Udemy, or official documentation like react.dev or python.org)"
 - "type": "Course", "Article", "Video", or "Project"
 - "difficulty": "Beginner", "Intermediate", or "Advanced"
 
+Example output structure:
+{{
+  "SkillName": [
+    {{
+      "title": "Course Name",
+      "url": "https://example.com",
+      "type": "Course",
+      "difficulty": "Beginner"
+    }},
+    {{
+      "title": "Tutorial Name",
+      "url": "https://example.com",
+      "type": "Video",
+      "difficulty": "Intermediate"
+    }}
+  ]
+}}
+
 Return ONLY valid JSON. No markdown block backticks, no extra text."""
-            raw = _call_ai(prompt, max_tokens=512)
-            if raw:
-                clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-                parsed = json.loads(clean)
-                if isinstance(parsed, list) and len(parsed) > 0:
-                    resources[skill] = parsed
-        except Exception:
-            pass
+        raw = _call_ai(prompt, max_tokens=2048)
+        if raw:
+            clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            parsed = json.loads(clean)
+            if isinstance(parsed, dict):
+                skill_map = {s.lower(): s for s in skills}
+                for k, v in parsed.items():
+                    k_lower = k.lower()
+                    if k_lower in skill_map and isinstance(v, list) and len(v) > 0:
+                        resources[skill_map[k_lower]] = v
+    except Exception as e:
+        import logging
+        logging.warning(f"Failed to generate resources for skills in batch: {e}")
+        
     return resources
 
 

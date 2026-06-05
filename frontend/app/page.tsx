@@ -99,17 +99,17 @@ export default function Home() {
   const cards = [
     {
       id: "industry" as Option,
-      icon: <Briefcase className="w-7 h-7" />,
+      icon: <Briefcase className="w-8 h-8" />,
       label: "Start with an\nIndustry Example",
     },
     {
       id: "upload" as Option,
-      icon: <Upload className="w-7 h-7" />,
+      icon: <Upload className="w-8 h-8" />,
       label: "Upload an Existing\nResumé",
     },
     {
       id: "linkedin" as Option,
-      icon: <Linkedin className="w-7 h-7" />,
+      icon: <Linkedin className="w-8 h-8" />,
       label: "Import your LinkedIn\nProfile",
     },
   ]
@@ -136,21 +136,21 @@ export default function Home() {
 
         /* ── question heading ── */
         .home-heading {
-          font-size: clamp(1.35rem, 3vw, 1.75rem);
-          font-weight: 600;
-          color: hsl(210 40% 92%);
+          font-size: clamp(1.6rem, 3.5vw, 2.1rem);
+          font-weight: 700;
+          color: hsl(210 40% 95%);
           text-align: center;
-          margin-bottom: 2.25rem;
-          letter-spacing: -0.01em;
+          margin-bottom: 2.5rem;
+          letter-spacing: -0.02em;
         }
 
         /* ── card grid ── */
         .card-grid {
           display: flex;
-          gap: 1rem;
+          gap: 1.25rem;
           flex-wrap: wrap;
           justify-content: center;
-          margin-bottom: 1.75rem;
+          margin-bottom: 2rem;
         }
 
         .option-card {
@@ -158,15 +158,15 @@ export default function Home() {
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          gap: 0.85rem;
-          width: 160px;
-          padding: 1.5rem 1rem;
-          border-radius: 14px;
+          gap: 1rem;
+          width: 185px;
+          padding: 1.75rem 1.25rem;
+          border-radius: 16px;
           border: 1.5px solid hsl(217 30% 22%);
           background: hsl(222 60% 8% / 0.7);
           backdrop-filter: blur(10px);
           cursor: pointer;
-          transition: border-color 0.2s, background 0.2s, transform 0.18s, box-shadow 0.2s;
+          transition: border-color 0.2s, background 0.2s, transform 0.2s, box-shadow 0.2s;
           text-align: center;
           color: hsl(215 20% 65%);
           user-select: none;
@@ -175,9 +175,9 @@ export default function Home() {
         .option-card:hover {
           border-color: hsl(210 80% 65%);
           background: hsl(213 60% 14% / 0.85);
-          transform: translateY(-3px);
-          box-shadow: 0 8px 30px hsl(210 80% 50% / 0.18);
-          color: hsl(210 40% 92%);
+          transform: translateY(-5px) scale(1.03);
+          box-shadow: 0 12px 35px hsl(210 80% 50% / 0.25);
+          color: hsl(210 40% 95%);
         }
 
         .option-card.active {
@@ -191,8 +191,8 @@ export default function Home() {
           display: flex;
           align-items: center;
           justify-content: center;
-          width: 52px;
-          height: 52px;
+          width: 56px;
+          height: 56px;
           border-radius: 50%;
           background: hsl(217 32% 17%);
           transition: background 0.2s;
@@ -204,7 +204,7 @@ export default function Home() {
         }
 
         .option-card .label {
-          font-size: 0.72rem;
+          font-size: 0.85rem;
           font-weight: 600;
           letter-spacing: 0.04em;
           text-transform: uppercase;
@@ -214,35 +214,39 @@ export default function Home() {
 
         /* ── blank doc link ── */
         .blank-link {
-          font-size: 0.85rem;
+          font-size: 0.95rem;
           color: hsl(215 20% 52%);
           text-decoration: none;
-          transition: color 0.15s;
+          transition: color 0.15s, transform 0.15s;
+          display: inline-block;
         }
-        .blank-link:hover { color: hsl(210 80% 65%); }
+        .blank-link:hover {
+          color: hsl(210 80% 65%);
+          transform: scale(1.02);
+        }
         .blank-link span { text-decoration: underline; }
 
         /* ── upload modal / panel ── */
         .upload-panel {
-          width: min(520px, 92vw);
-          border-radius: 18px;
+          width: min(550px, 92vw);
+          border-radius: 20px;
           border: 1.5px solid hsl(217 30% 22%);
           background: hsl(222 60% 7% / 0.92);
           backdrop-filter: blur(16px);
-          padding: 2rem;
+          padding: 2.25rem;
           box-shadow: 0 24px 60px hsl(0 0% 0% / 0.45);
         }
 
         .upload-panel h2 {
-          font-size: 1.15rem;
+          font-size: 1.35rem;
           font-weight: 600;
-          color: hsl(210 40% 92%);
-          margin-bottom: 0.4rem;
+          color: hsl(210 40% 95%);
+          margin-bottom: 0.5rem;
         }
         .upload-panel p {
-          font-size: 0.82rem;
-          color: hsl(215 20% 52%);
-          margin-bottom: 1.25rem;
+          font-size: 0.92rem;
+          color: hsl(215 20% 55%);
+          margin-bottom: 1.5rem;
         }
 
         .drop-zone {
@@ -250,13 +254,16 @@ export default function Home() {
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          height: 180px;
-          border-radius: 12px;
+          height: 200px;
+          border-radius: 14px;
           border: 2px dashed hsl(217 30% 28%);
           background: hsl(217 32% 11% / 0.6);
           cursor: pointer;
-          transition: border-color 0.2s, background 0.2s;
-          gap: 0.65rem;
+          transition: border-color 0.2s, background 0.2s, transform 0.15s;
+          gap: 0.75rem;
+        }
+        .drop-zone:hover {
+          transform: scale(1.01);
         }
         .drop-zone.dragging {
           border-color: hsl(210 80% 60%);
@@ -268,36 +275,36 @@ export default function Home() {
         }
 
         .drop-zone .dz-icon {
-          width: 48px; height: 48px;
+          width: 54px; height: 54px;
           border-radius: 50%;
           background: hsl(217 32% 17%);
           display: flex; align-items: center; justify-content: center;
           color: hsl(210 80% 65%);
         }
         .drop-zone .dz-text {
-          font-size: 0.88rem;
+          font-size: 1rem;
           font-weight: 500;
-          color: hsl(210 40% 80%);
+          color: hsl(210 40% 85%);
         }
         .drop-zone .dz-sub {
-          font-size: 0.76rem;
-          color: hsl(215 20% 50%);
+          font-size: 0.85rem;
+          color: hsl(215 20% 52%);
         }
 
         .file-info {
-          display: flex; align-items: center; gap: 0.75rem;
-          padding: 0.75rem 1rem;
+          display: flex; align-items: center; gap: 0.85rem;
+          padding: 0.85rem 1.15rem;
           background: hsl(217 32% 13%);
-          border-radius: 10px;
+          border-radius: 12px;
           margin-top: 1rem;
         }
         .file-info .fi-name {
-          flex: 1; font-size: 0.85rem; font-weight: 500;
+          flex: 1; font-size: 0.95rem; font-weight: 500;
           color: hsl(210 40% 85%); overflow: hidden;
           text-overflow: ellipsis; white-space: nowrap;
         }
         .file-info .fi-size {
-          font-size: 0.75rem; color: hsl(215 20% 50%);
+          font-size: 0.85rem; color: hsl(215 20% 52%);
         }
         .file-info button {
           background: none; border: none; cursor: pointer;
@@ -309,17 +316,20 @@ export default function Home() {
         .btn-primary {
           display: flex; align-items: center; justify-content: center;
           gap: 0.5rem;
-          width: 100%; margin-top: 1rem; padding: 0.75rem;
-          border-radius: 10px; border: none; cursor: pointer;
-          font-size: 0.9rem; font-weight: 600;
+          width: 100%; margin-top: 1rem; padding: 0.85rem;
+          border-radius: 12px; border: none; cursor: pointer;
+          font-size: 1rem; font-weight: 600;
           background: hsl(210 80% 55%);
           color: #fff;
           transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
         }
         .btn-primary:hover:not(:disabled) {
           background: hsl(210 80% 48%);
-          transform: translateY(-1px);
-          box-shadow: 0 6px 20px hsl(210 80% 45% / 0.35);
+          transform: translateY(-2px);
+          box-shadow: 0 8px 25px hsl(210 80% 45% / 0.4);
+        }
+        .btn-primary:active:not(:disabled) {
+          transform: translateY(0) scale(0.98);
         }
         .btn-primary:disabled {
           opacity: 0.6; cursor: not-allowed;
@@ -328,10 +338,13 @@ export default function Home() {
         .btn-back {
           display: inline-flex; align-items: center; gap: 0.35rem;
           background: none; border: none; cursor: pointer;
-          font-size: 0.82rem; color: hsl(215 20% 52%);
-          margin-bottom: 1.25rem; padding: 0; transition: color 0.15s;
+          font-size: 0.92rem; color: hsl(215 20% 52%);
+          margin-bottom: 1.25rem; padding: 0; transition: color 0.15s, transform 0.15s;
         }
-        .btn-back:hover { color: hsl(210 40% 80%); }
+        .btn-back:hover {
+          color: hsl(210 40% 80%);
+          transform: translateX(-2px);
+        }
 
         .success-icon {
           display: flex; align-items: center; justify-content: center;
@@ -377,7 +390,7 @@ export default function Home() {
                       style={{ display: "none" }}
                     />
                     <div className="dz-icon">
-                      <Upload className="w-5 h-5" />
+                      <Upload className="w-6 h-6" />
                     </div>
                     <span className="dz-text">Drag &amp; drop or click to upload</span>
                     <span className="dz-sub">PDF or DOCX</span>
@@ -397,11 +410,11 @@ export default function Home() {
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                   >
-                    <FileText className="w-4 h-4" style={{ color: "hsl(210 80% 65%)", flexShrink: 0 }} />
+                    <FileText className="w-5 h-5" style={{ color: "hsl(210 80% 65%)", flexShrink: 0 }} />
                     <span className="fi-name">{file.name}</span>
                     <span className="fi-size">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
                     <button onClick={() => setFile(null)} aria-label="Remove file">
-                      <X className="w-4 h-4" />
+                      <X className="w-5 h-5" />
                     </button>
                   </motion.div>
                 )}
@@ -412,9 +425,9 @@ export default function Home() {
                   disabled={!file || isAnalyzing}
                 >
                   {isAnalyzing ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> Analysing…</>
+                    <><Loader2 className="w-5 h-5 animate-spin" /> Analysing…</>
                   ) : (
-                    <>Analyse Resumé <ArrowRight className="w-4 h-4" /></>
+                    <>Analyse Resumé <ArrowRight className="w-5 h-5" /></>
                   )}
                 </button>
               </div>

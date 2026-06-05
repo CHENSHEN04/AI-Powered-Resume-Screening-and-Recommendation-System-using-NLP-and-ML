@@ -708,6 +708,31 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = "", 
     # 10. Save (authenticated users)
     # Background auto-save removed in favor of explicit user SAVE button on Dashboard
 
+    # Initialize chat history with proactive greeting from Career Coach
+    score_result = st.session_state.get("weighted_score_result")
+    score = score_result["final_score"] if score_result else analysis["match_percentage"]
+    verdict = score_result["verdict"] if score_result else ("Strong Match" if score >= 85 else "Moderate Match" if score >= 65 else "Weak Match")
+    role_title = analysis.get("role", target_role).replace("_", " ").title()
+    missing_req = analysis.get("missing_required", [])
+    missing_rec = analysis.get("missing_recommended", [])
+    all_missing = missing_req + missing_rec
+    
+    greeting = (
+        f"👋 Hello! I am your AI Career Coach. I've analyzed your resume for the **{role_title}** role.\n\n"
+        f"🎯 **Match Score:** {score:.1f}% ({verdict})\n"
+    )
+    if all_missing:
+        greeting += f"🔍 **Key Skill Gaps:** {', '.join(all_missing[:4])}\n"
+    else:
+        greeting += "✨ **Key Skill Gaps:** None! Your skills align perfectly with the role requirements.\n"
+        
+    if analysis.get("recommendations"):
+        greeting += f"\n💡 **Top Recommendation:** {analysis['recommendations'][0]}\n"
+        
+    greeting += "\nHow would you like to prepare for this role? Ask me about closing your skill gaps, interview questions, or salary expectations!"
+    
+    st.session_state["chat_history"] = [{"role": "assistant", "content": greeting}]
+
     progress.progress(100, text="✅ Done!")
     time.sleep(0.3)
     st.session_state["app_stage"] = "teaser"
@@ -1627,8 +1652,26 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
         if not AIAssistant:
             st.warning("⚠️ AI Assistant not available.")
         else:
-            if "ai_agent" not in st.session_state:
-                st.session_state["ai_agent"] = AIAssistant()
+            # Dynamically compile the latest context from the resume assessment results
+            context = {
+                "target_role": st.session_state.get("target_role", "Unknown"),
+                "match_score": f"{st.session_state.get('gap_analysis', {}).get('match_percentage', 0.0):.1f}%",
+                "skills_found": st.session_state.get("skill_data", {}).get("all_skills", []),
+                "missing_skills": (
+                    st.session_state.get("gap_analysis", {}).get("missing_required", []) +
+                    st.session_state.get("gap_analysis", {}).get("missing_recommended", [])
+                ),
+                "verdict": st.session_state.get("weighted_score_result", {}).get("verdict", "N/A")
+            }
+            # Instantiate or update AI Coach Agent with latest context
+            st.session_state["ai_agent"] = AIAssistant(context=context)
+            
+            if not st.session_state.get("chat_history"):
+                st.session_state["chat_history"] = [{
+                    "role": "assistant",
+                    "content": "👋 Hello! I am your AI Career Coach. Upload your resume and select a target role to get custom-tailored guidance, or ask me any general career questions right now!"
+                }]
+
             for msg in st.session_state["chat_history"]:
                 with st.chat_message("user" if msg["role"] == "user" else "assistant"):
                     st.write(msg["content"])

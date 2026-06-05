@@ -17,10 +17,19 @@ class AnalysisResult(BaseModel):
 
 # --- Request Models ---
 
+class ResumeContext(BaseModel):
+    predicted_role: str
+    match_score: float
+    skills: List[str]
+    missing_required: List[str]
+    missing_recommended: List[str]
+    verdict: Optional[str] = None
+
 class ChatRequest(BaseModel):
     message: str
     user_id: Optional[str] = "guest"
     session_id: Optional[str] = None
+    resume_context: Optional[ResumeContext] = None
 
 # --- Response Models ---
 

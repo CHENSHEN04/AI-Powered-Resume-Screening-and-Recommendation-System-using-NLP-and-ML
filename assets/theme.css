@@ -7,6 +7,16 @@
      Text:     #FAFAFA (primary)  #C0C6D0 (body)    #8899A6 (muted)
    ========================================================================= */
 
+/* --- Root HTML Font Sizing --- */
+html {
+    font-size: 17px;
+}
+@media (min-width: 768px) {
+    html {
+        font-size: 18px;
+    }
+}
+
 /* --- Root Variables --- */
 :root {
     --brand-primary: #6C63FF;
@@ -39,7 +49,7 @@
 .main .block-container span,
 .main .block-container div {
     color: var(--text-body);
-    font-size: 1.12rem;
+    font-size: 1.15rem;
     line-height: 1.75;
 }
 
@@ -56,24 +66,24 @@ h1 {
     background-clip: text;
     -webkit-text-fill-color: transparent;
     font-weight: 800;
-    font-size: 2.8rem !important;
+    font-size: 3.2rem !important;
 }
 
 h2 {
-    font-size: 1.8rem !important;
+    font-size: 2.1rem !important;
     font-weight: 700;
     margin-top: 1.5rem;
 }
 
 h3 {
-    font-size: 1.4rem !important;
+    font-size: 1.6rem !important;
     font-weight: 600;
 }
 
 /* --- Hero Section --- */
 .hero-container {
     text-align: center;
-    padding: 4rem 2rem;
+    padding: 4.5rem 2.5rem;
     border-radius: var(--radius-lg);
     background: radial-gradient(circle at 30% 40%, rgba(108, 99, 255, 0.20), transparent 60%),
         radial-gradient(circle at 70% 60%, rgba(255, 101, 132, 0.12), transparent 50%),
@@ -83,14 +93,14 @@ h3 {
 }
 
 .hero-container h1 {
-    font-size: 3rem !important;
+    font-size: 3.6rem !important;
     margin-bottom: 0.5rem;
 }
 
 .hero-subtitle {
     color: var(--text-body) !important;
-    font-size: 1.15rem !important;
-    max-width: 600px;
+    font-size: 1.25rem !important;
+    max-width: 750px;
     margin: 0 auto 2rem;
     line-height: 1.7;
     text-align: center;
@@ -101,20 +111,20 @@ h3 {
     background: var(--surface-card);
     border: 1px solid rgba(108, 99, 255, 0.12);
     border-radius: var(--radius-md);
-    padding: 1.5rem;
+    padding: 1.75rem 1.5rem;
     text-align: center;
     transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
     cursor: default;
 }
 
 .metric-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 30px rgba(108, 99, 255, 0.2);
+    transform: translateY(-5px) scale(1.02);
+    box-shadow: 0 12px 35px rgba(108, 99, 255, 0.25);
     border-color: rgba(108, 99, 255, 0.35);
 }
 
 .metric-card .metric-value {
-    font-size: 2.2rem;
+    font-size: 2.5rem;
     font-weight: 800;
     background: var(--gradient-brand);
     -webkit-background-clip: text;
@@ -124,7 +134,7 @@ h3 {
 
 .metric-card .metric-label {
     color: var(--text-body) !important;
-    font-size: 0.95rem !important;
+    font-size: 1.1rem !important;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     margin-top: 0.4rem;
@@ -136,7 +146,7 @@ h3 {
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 3rem;
+    padding: 3.5rem;
     border-radius: var(--radius-lg);
     background: var(--surface-card);
     border: 1px solid rgba(108, 99, 255, 0.25);
@@ -158,7 +168,7 @@ h3 {
 .teaser-score .score-label {
     color: var(--text-body) !important;
     margin-top: 0.5rem;
-    font-size: 1.1rem !important;
+    font-size: 1.25rem !important;
     font-weight: 500;
 }
 
@@ -167,7 +177,7 @@ h3 {
     background: var(--surface-card);
     border-left: 4px solid var(--brand-primary);
     border-radius: var(--radius-sm);
-    padding: 1.2rem 1.4rem;
+    padding: 1.3rem 1.5rem;
     margin-bottom: 0.8rem;
     transition: border-color 0.25s, background 0.25s, transform 0.15s;
 }
@@ -175,29 +185,29 @@ h3 {
 .action-card:hover {
     border-left-color: var(--brand-secondary);
     background: var(--surface-hover);
-    transform: translateX(4px);
+    transform: translateX(6px);
 }
 
 .action-card .action-title {
     font-weight: 600;
     margin-bottom: 0.3rem;
     color: var(--text-primary) !important;
-    font-size: 1rem !important;
+    font-size: 1.15rem !important;
 }
 
 .action-card .action-impact {
     color: var(--brand-accent) !important;
-    font-size: 0.9rem !important;
+    font-size: 1.05rem !important;
     font-weight: 500;
 }
 
 /* --- Skill Pills --- */
 .skill-pill {
     display: inline-block;
-    padding: 0.4rem 1rem;
-    margin: 0.3rem;
+    padding: 0.5rem 1.25rem;
+    margin: 0.4rem;
     border-radius: 50px;
-    font-size: 0.9rem;
+    font-size: 1.05rem;
     font-weight: 500;
     background: rgba(108, 99, 255, 0.15);
     color: #C4BFFF !important;
@@ -209,7 +219,7 @@ h3 {
 .skill-pill:hover {
     background: rgba(108, 99, 255, 0.3);
     transform: scale(1.05);
-    box-shadow: 0 2px 12px rgba(108, 99, 255, 0.2);
+    box-shadow: 0 4px 15px rgba(108, 99, 255, 0.25);
 }
 
 .skill-pill.missing {
@@ -285,9 +295,9 @@ h3 {
     color: #FFFFFF !important;
     border: none !important;
     border-radius: 50px !important;
-    padding: 0.7rem 2.5rem !important;
+    padding: 0.8rem 2.8rem !important;
     font-weight: 600 !important;
-    font-size: 1rem !important;
+    font-size: 1.15rem !important;
     letter-spacing: 0.02em;
     transition: transform 0.2s ease, box-shadow 0.2s ease !important;
 }
@@ -299,10 +309,10 @@ h3 {
 
 /* Make all buttons more visible */
 .stButton>button {
-    font-size: 0.95rem !important;
+    font-size: 1.08rem !important;
     font-weight: 500 !important;
     border-radius: var(--radius-sm) !important;
-    padding: 0.5rem 1.5rem !important;
+    padding: 0.6rem 1.8rem !important;
     transition: all 0.2s ease !important;
 }
 
@@ -317,7 +327,7 @@ section[data-testid="stSidebar"] * {
 }
 
 section[data-testid="stSidebar"] .stMarkdown h1 {
-    font-size: 1.5rem !important;
+    font-size: 1.8rem !important;
     background: var(--gradient-brand);
     -webkit-background-clip: text;
     background-clip: text;
@@ -329,7 +339,7 @@ section[data-testid="stSidebar"] .stCaption,
 section[data-testid="stSidebar"] label,
 section[data-testid="stSidebar"] span {
     color: var(--text-body) !important;
-    font-size: 0.95rem !important;
+    font-size: 1.08rem !important;
 }
 
 section[data-testid="stSidebar"] input {
@@ -341,7 +351,7 @@ section[data-testid="stSidebar"] input {
 
 section[data-testid="stSidebar"] .stRadio label {
     color: var(--text-primary) !important;
-    font-size: 1rem !important;
+    font-size: 1.12rem !important;
     font-weight: 500;
 }
 
@@ -353,8 +363,8 @@ section[data-testid="stSidebar"] .stRadio label {
 
 .stTabs [data-baseweb="tab"] {
     border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-    padding: 0.6rem 1.4rem;
-    font-size: 0.95rem !important;
+    padding: 0.7rem 1.6rem;
+    font-size: 1.08rem !important;
     font-weight: 500;
     color: var(--text-muted) !important;
     transition: color 0.2s, background 0.2s;
@@ -374,7 +384,7 @@ section[data-testid="stSidebar"] .stRadio label {
 [data-testid="stFileUploader"] {
     border: 2px dashed rgba(108, 99, 255, 0.3) !important;
     border-radius: var(--radius-md) !important;
-    padding: 1rem !important;
+    padding: 1.25rem !important;
     transition: border-color 0.3s ease;
 }
 
@@ -397,13 +407,13 @@ section[data-testid="stSidebar"] .stRadio label {
 details summary {
     color: var(--text-primary) !important;
     font-weight: 500;
-    font-size: 1.12rem !important;
+    font-size: 1.25rem !important;
 }
 
 /* --- Success / Error Messages --- */
 .stAlert {
     border-radius: var(--radius-sm) !important;
-    font-size: 1.05rem !important;
+    font-size: 1.15rem !important;
 }
 
 /* --- Selectbox and Inputs --- */
@@ -413,7 +423,7 @@ details summary {
 .stNumberInput label {
     color: var(--text-primary) !important;
     font-weight: 500 !important;
-    font-size: 1.08rem !important;
+    font-size: 1.2rem !important;
 }
 
 /* --- Mobile Responsive --- */
@@ -437,4 +447,66 @@ details summary {
     .metric-card {
         padding: 1rem;
     }
+}
+
+/* =========================================================================
+   Interactive & User-Friendly UX Enhancements
+   ========================================================================= */
+
+/* --- Custom Interactive Scrollbar --- */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: #0D0F14;
+    border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(108, 99, 255, 0.35); /* Soft Brand Purple */
+    border-radius: var(--radius-sm);
+    border: 2px solid #0D0F14;
+    transition: background-color 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(108, 99, 255, 0.75); /* Bright Purple on hover */
+}
+
+/* --- Faded Container cues for off-screen content --- */
+.scroll-container {
+    max-height: 420px;
+    overflow-y: auto;
+    position: relative;
+    padding-right: 8px;
+    scrollbar-gutter: stable; /* Retains layout width when scrollbar appears */
+}
+
+/* Bottom shadow gradient to indicate more content lies below */
+.scroll-fade-bottom {
+    position: relative;
+}
+
+.scroll-fade-bottom::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 35px;
+    background: linear-gradient(to top, rgba(26, 29, 39, 0.95) 0%, transparent 100%);
+    pointer-events: none; /* Clicking passes through the visual fade */
+    transition: opacity 0.3s ease;
+}
+
+/* --- Interactive Tooltip and Hover Scale Affordances --- */
+.interactive-hover-scale {
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+}
+
+.interactive-hover-scale:hover {
+    transform: scale(1.02);
+    box-shadow: 0 8px 20px rgba(108, 99, 255, 0.15);
 }

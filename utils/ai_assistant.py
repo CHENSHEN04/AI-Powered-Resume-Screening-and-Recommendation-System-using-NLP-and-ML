@@ -379,14 +379,17 @@ def _call_gemini_http(prompt, system="", max_tokens=1024, image_bytes=None,
                 st.session_state["gemini_error"] = f"HTTP {he.code}: {message}"
             except Exception:
                 pass
-            return None
+            # Put permanently failing key on 1 hour cooldown and try next key
+            _gemini_manager.mark_cooldown(key, duration=3600)
+            continue
         except Exception as e:
             logger.warning(f"Gemini HTTP call failed: {e}")
             try:
                 st.session_state["gemini_error"] = str(e)
             except Exception:
                 pass
-            return None
+            _gemini_manager.mark_cooldown(key, duration=3600)
+            continue
             
     return None
 

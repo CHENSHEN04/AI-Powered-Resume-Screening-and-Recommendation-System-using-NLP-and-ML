@@ -96,9 +96,12 @@ class JobClassifier:
             # Predict
             prediction_idx = self.clf.predict(vectors)[0]
             
-            # Decode label if encoder exists
-            if self.encoder:
-                top_category = self.encoder.inverse_transform([prediction_idx])[0]
+            # Decode label if encoder exists and predicted label is numeric
+            if self.encoder and (isinstance(prediction_idx, (int, np.integer)) or (isinstance(prediction_idx, str) and prediction_idx.isdigit())):
+                try:
+                    top_category = self.encoder.inverse_transform([int(prediction_idx)])[0]
+                except Exception:
+                    top_category = str(prediction_idx)
             else:
                 top_category = str(prediction_idx)
             
@@ -107,9 +110,12 @@ class JobClassifier:
                 probs = self.clf.predict_proba(vectors)[0]
                 classes_idx = self.clf.classes_
                 
-                # Map class indices to names if encoder exists
-                if self.encoder:
-                    class_labels = self.encoder.inverse_transform(classes_idx)
+                # Map class indices to names if encoder exists and contains numeric classes
+                if self.encoder and all(isinstance(c, (int, np.integer)) or (isinstance(c, str) and c.isdigit()) for c in classes_idx):
+                    try:
+                        class_labels = self.encoder.inverse_transform([int(c) for c in classes_idx])
+                    except Exception:
+                        class_labels = [str(c) for c in classes_idx]
                 else:
                     class_labels = [str(c) for c in classes_idx]
                 

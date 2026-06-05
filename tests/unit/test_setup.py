@@ -22,7 +22,6 @@ class TestProjectStructure:
             "tests",
             "data",
             "models",
-            "pages",
             "scripts",
             ".streamlit",
         ]

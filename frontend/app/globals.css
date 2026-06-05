@@ -38,7 +38,80 @@
   border-color: var(--color-border);
 }
 
+html {
+  font-size: 17px;
+  scroll-behavior: smooth;
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 18px;
+  }
+}
+
 body {
   background-color: var(--color-background);
   color: var(--color-foreground);
+}
+
+/* =========================================================================
+   Interactive & User-Friendly UX Enhancements
+   ========================================================================= */
+
+/* --- Custom Interactive Scrollbar --- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(222.2 84% 4.9%);
+  border-radius: var(--radius);
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsla(210, 80%, 60%, 0.35); /* Soft Blue/Indigo theme */
+  border-radius: var(--radius);
+  border: 2px solid hsl(222.2 84% 4.9%);
+  transition: background-color 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsla(210, 80%, 60%, 0.75); /* Bright on hover */
+}
+
+/* --- Faded Container cues for off-screen content --- */
+.scroll-container {
+  max-height: 400px;
+  overflow-y: auto;
+  position: relative;
+  padding-right: 6px;
+  scrollbar-gutter: stable;
+}
+
+/* Bottom shadow gradient to indicate more content lies below */
+.scroll-fade-bottom {
+  position: relative;
+}
+
+.scroll-fade-bottom::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
+  background: linear-gradient(to top, hsl(222.2 84% 4.9%) 0%, transparent 100%);
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+/* --- Interactive Tooltip and Hover Scale Affordances --- */
+.interactive-hover-scale {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+}
+
+.interactive-hover-scale:hover {
+  transform: scale(1.02);
+  box-shadow: 0 8px 20px hsla(210, 80%, 60%, 0.15);
 }
