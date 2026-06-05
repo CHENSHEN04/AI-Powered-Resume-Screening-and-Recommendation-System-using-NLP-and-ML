@@ -9,12 +9,40 @@ OUTPUT_SPECIFICATION.md section 2.1.2.
 
 import joblib
 import numpy as np
+import re
+import nltk
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import streamlit as st
 
 from utils.errors import ErrorCode, AppError, get_error, log_error
 from utils.jd_matcher import JDMatcher
+
+# Auto-download NLTK requirements for live inference preprocessing
+try:
+    nltk.download('stopwords', quiet=True)
+    nltk.download('wordnet', quiet=True)
+    nltk.download('omw-1.4', quiet=True)
+except Exception:
+    pass
+
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+
+lemmatizer = WordNetLemmatizer()
+stop_words = set(stopwords.words('english'))
+
+def clean_text(text):
+    """Clean text with URL/email removal, stopword removal, and WordNet Lemmatization."""
+    if not isinstance(text, str): return ""
+    text = text.lower()
+    text = re.sub(r'http\S+|www\S+|https\S+', '', text, flags=re.MULTILINE)  # Remove URLs
+    text = re.sub(r'\S*@\S*\s?', '', text)  # Remove emails
+    text = re.sub(r'[^a-zA-Z\s]', '', text)  # Remove special chars
+    words = text.split()
+    cleaned_words = [lemmatizer.lemmatize(w) for w in words if w not in stop_words]
+    return " ".join(cleaned_words)
+
 
 # ==============================================================================
 # Constants
@@ -90,8 +118,11 @@ class JobClassifier:
             }
             
         try:
+            # Clean text to match features
+            cleaned_text = clean_text(text)
+            
             # Vectorize text
-            vectors = self.tfidf.transform([text])
+            vectors = self.tfidf.transform([cleaned_text])
             
             # Predict
             prediction_idx = self.clf.predict(vectors)[0]
@@ -184,11 +215,17 @@ class JobClassifier:
             
         try:
             # 1. Get predicted class index
-            vectors = self.tfidf.transform([text])
+            cleaned_text = clean_text(text)
+            vectors = self.tfidf.transform([cleaned_text])
             prediction_idx = self.clf.predict(vectors)[0]
             
-            # 2. Check for linear coefficients
-            if not hasattr(self.clf, "coef_"):
+            # 2. Check for linear coefficients (calibrated classifier or plain model)
+            if hasattr(self.clf, "calibrated_classifiers_"):
+                # Average coefficients across calibrated folds
+                coefs_matrix = np.mean([c.estimator.coef_ for c in self.clf.calibrated_classifiers_], axis=0)
+            elif hasattr(self.clf, "coef_"):
+                coefs_matrix = self.clf.coef_
+            else:
                 return {"positive": [], "negative": []}
                 
             # 3. Get Feature Names
@@ -197,11 +234,11 @@ class JobClassifier:
             # 4. Get Coefficients for the predicted class
             # For multi-class, coef_ is shape (n_classes, n_features)
             # For binary, it's (1, n_features)
-            if self.clf.coef_.shape[0] > 1:
-                class_coefs = self.clf.coef_[prediction_idx]
+            if coefs_matrix.shape[0] > 1:
+                class_coefs = coefs_matrix[prediction_idx]
             else:
                 # Binary case (not likely here but good to handle)
-                class_coefs = self.clf.coef_[0] if prediction_idx == 1 else -self.clf.coef_[0]
+                class_coefs = coefs_matrix[0] if prediction_idx == 1 else -coefs_matrix[0]
             
             # 5. Filter for features present in the input text ONLY
             # This is important: we only care about words the USER actually wrote.

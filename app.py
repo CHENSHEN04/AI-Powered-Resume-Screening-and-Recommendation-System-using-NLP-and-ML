@@ -640,6 +640,33 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = "", 
     analysis = analyzer.analyze_gaps(skill_data["all_skills"], target_role, jd_text=jd_text)
     st.session_state["gap_analysis"] = analysis
 
+    if jd_text:
+        # Re-align visualization variables to match the GapAnalyzer's smart rules (asymmetric semantic groups, noise words filter)
+        req_skills = analysis.get("required_skills", [])
+        rec_skills = analysis.get("recommended_skills", [])
+        nth_skills = analysis.get("nice_to_have", [])
+        
+        missing_req = analysis.get("missing_required", [])
+        missing_rec = analysis.get("missing_recommended", [])
+        missing_nth = analysis.get("missing_nice_to_have", [])
+        
+        matched_req = [s for s in req_skills if s not in missing_req]
+        matched_rec = [s for s in rec_skills if s not in missing_rec]
+        matched_nth = [s for s in nth_skills if s not in missing_nth]
+        
+        matched_skills = matched_req + matched_rec + matched_nth
+        missing_skills = missing_req + missing_rec + missing_nth
+        
+        target_skills_set = set(req_skills + rec_skills + nth_skills)
+        extra_skills = [
+            s for s in skill_data["all_skills"] 
+            if not analyzer._is_skill_matched(s, target_skills_set)
+        ]
+        
+        st.session_state["matched_skills"] = matched_skills
+        st.session_state["missing_skills"] = missing_skills
+        st.session_state["extra_skills"]   = extra_skills
+
     # 7. Weighted score (NEW)
     if jd_text and jd_match_result:
         progress.progress(75, text="⚖️ Computing weighted score...")
