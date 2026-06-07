@@ -41,16 +41,26 @@ class Visualizer:
         missing_rec  = role_data.get("missing_recommended",  [])
         missing_nice = role_data.get("missing_nice_to_have", [])
 
+        # Instantiate GapAnalyzer to use its smart skill matching rules
+        try:
+            from utils.gap_analyzer import GapAnalyzer
+            analyzer = GapAnalyzer()
+        except Exception:
+            analyzer = None
+
         def _coverage(total_list, missing_list):
             """% of skills in total_list that the candidate has."""
             if not total_list:
-                return 0.0
-            present = len([s for s in total_list if s.lower() in user_skills_set])
+                return 100.0
+            if analyzer:
+                present = len([s for s in total_list if analyzer._is_skill_matched(s, user_skills_set)])
+            else:
+                present = len([s for s in total_list if s.lower() in user_skills_set])
             return round(present / len(total_list) * 100, 1)
 
         def _coverage_from_missing(missing_list, fallback_total=10):
             """
-            When we only have the missing list (not the full list), estimate coverage
+            When we only have the missing list (not the total list), estimate coverage
             as: (assumed_total - missing) / assumed_total.
             Uses match_percentage as a better signal when available.
             """
@@ -60,10 +70,19 @@ class Visualizer:
             return round(role_data.get("match_percentage", 50.0), 1)
 
         # Prefer full lists; fall back to missing-list inference
-        if required:
-            req_cov  = _coverage(required,     [])
-            rec_cov  = _coverage(recommended,  [])
-            nice_cov = _coverage(nice_to_have, [])
+        if required or recommended or nice_to_have:
+            req_cov  = _coverage(required,     []) if required else 100.0
+            rec_cov  = _coverage(recommended,  []) if recommended else 100.0
+            nice_cov = _coverage(nice_to_have, []) if nice_to_have else 100.0
+            
+            # Boost nice_cov (Bonus Skills axis) if extra/transferable skills are present
+            extra_skills_list = role_data.get("extra_skills", [])
+            if not extra_skills_list and analyzer:
+                target_skills_set = {s.lower() for s in required + recommended + nice_to_have}
+                extra_skills_list = [s for s in user_skills if not analyzer._is_skill_matched(s, target_skills_set)]
+            if extra_skills_list:
+                extra_boost = len(extra_skills_list) * 10.0
+                nice_cov = min(nice_cov + extra_boost, 100.0)
         else:
             overall  = role_data.get("match_percentage", 0.0)
             req_cov  = max(0, overall - 5)   # required is slightly harder to satisfy

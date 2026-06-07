@@ -362,6 +362,19 @@ class ResumeParser:
             doc = fitz.open(stream=BytesIO(file_bytes), filetype="pdf")
             if len(doc) > 0:
                 page = doc[0]  # First page
+                
+                # Append page_info element containing dimensions, safely structured
+                # to not cause KeyErrors in existing code/tests.
+                metadata.append({
+                    "text": "",
+                    "font": "",
+                    "size": 0.0,
+                    "bbox": [0.0, 0.0, 0.0, 0.0],
+                    "type": "page_info",
+                    "width": round(page.rect.width, 1),
+                    "height": round(page.rect.height, 1)
+                })
+                
                 blocks = page.get_text("dict")["blocks"]
                 for b in blocks:
                     if b.get("type") == 0:  # Text block

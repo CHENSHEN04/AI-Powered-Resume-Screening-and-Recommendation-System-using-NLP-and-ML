@@ -31,6 +31,29 @@ LEARNING_RESOURCES_PATH = Path("data/learning_resources.json")
 # Gap Analyzer Class
 # ==============================================================================
 
+def deduplicate_language_skills(skills: List[str]) -> List[str]:
+    lang_groups = [
+        {"chinese", "mandarin", "mandarin speaker"},
+        {"english", "english speaker"},
+        {"malay", "malay speaker", "bahasa melayu"},
+        {"tamil", "tamil speaker"},
+        {"cantonese", "cantonese speaker"}
+    ]
+    to_remove = set()
+    skills_lower = [s.lower().strip() for s in skills]
+    
+    for group in lang_groups:
+        present_indices = [i for i, s in enumerate(skills_lower) if s in group]
+        if len(present_indices) > 1:
+            # Find the longest one to keep
+            longest_idx = max(present_indices, key=lambda i: len(skills[i]))
+            for idx in present_indices:
+                if idx != longest_idx:
+                    to_remove.add(skills[idx])
+                    
+    return [s for s in skills if s not in to_remove]
+
+
 class GapAnalyzer:
     """
     Analyzes skill gaps and provides recommendations based on job category.
@@ -194,18 +217,33 @@ class GapAnalyzer:
             "steward", "timely", "verification", "review", "approve", "monitor", 
             "service", "quality", "integrity", "common", "general", "basic", "must",
             "required", "recommended", "nice to have", "competency", "role", "task",
-            "job", "candidate", "employee", "staff", "skills", "ability", "ability to"
+            "job", "candidate", "employee", "staff", "skills", "ability", "ability to",
+            "duties", "apply", "fresh", "kuala", "lumpur", "malaysia", "singapore", "psa",
+            "role summary", "essential requirements", "apbs", "data management internship"
         }
         
         required = [s for s in role_data.get("required_skills", []) if s.lower().strip() not in noise_words]
         recommended = [s for s in role_data.get("recommended_skills", []) if s.lower().strip() not in noise_words]
         nice_to_have = [s for s in role_data.get("nice_to_have", []) if s.lower().strip() not in noise_words]
+        
+        # Deduplicate redundant language variations across required, recommended, and nice_to_have
+        all_req_skills = required + recommended + nice_to_have
+        deduped_all = deduplicate_language_skills(all_req_skills)
+        deduped_set = set(s.lower() for s in deduped_all)
+        
+        required = [s for s in required if s.lower() in deduped_set]
+        recommended = [s for s in recommended if s.lower() in deduped_set]
+        nice_to_have = [s for s in nice_to_have if s.lower() in deduped_set]
         weights = role_data.get("weights", {"required": 1.0, "recommended": 0.6, "nice_to_have": 0.3})
         
         # Calculate gaps using smart skill matching
         missing_required = [s for s in required if not self._is_skill_matched(s, user_skills_set)]
         missing_recommended = [s for s in recommended if not self._is_skill_matched(s, user_skills_set)]
         missing_nice = [s for s in nice_to_have if not self._is_skill_matched(s, user_skills_set)]
+        
+        # Calculate extra skills (bonus skills the candidate has that are not required/recommended/nice-to-have)
+        target_skills_set = {s.lower() for s in required + recommended + nice_to_have}
+        extra_skills = [s for s in user_skills if not self._is_skill_matched(s, target_skills_set)]
         
         # Calculate weighted match percentage
         total_weight = (len(required) * weights["required"] + 
@@ -217,6 +255,11 @@ class GapAnalyzer:
                          (len(nice_to_have) - len(missing_nice)) * weights["nice_to_have"])
                          
         match_percentage = (matched_weight / total_weight * 100) if total_weight > 0 else 0.0
+        
+        # Apply transferable skill bonus (+1.0% per extra skill, capped at 10.0%)
+        if extra_skills and total_weight > 0:
+            bonus = min(len(extra_skills) * 1.0, 10.0)
+            match_percentage = min(match_percentage + bonus, 100.0)
         
         # Generate recommendations
         recommendations = self._generate_recommendations(
@@ -234,6 +277,7 @@ class GapAnalyzer:
             "missing_required": missing_required,
             "missing_recommended": missing_recommended,
             "missing_nice_to_have": missing_nice,
+            "extra_skills": extra_skills,
             "match_percentage": round(match_percentage, 1),
             "recommendations": recommendations,
             "learning_paths": learning_paths

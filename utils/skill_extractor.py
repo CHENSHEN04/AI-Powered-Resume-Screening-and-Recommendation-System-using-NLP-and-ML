@@ -77,6 +77,13 @@ class SkillExtractor:
             skills.update(s.lower() for s in cat.get("recommended_skills", []))
             skills.update(s.lower() for s in cat.get("nice_to_have", []))
             
+        # Add dynamically resolved common skills and database skills
+        try:
+            from utils.role_standards_resolver import load_all_known_skills
+            skills.update(load_all_known_skills())
+        except Exception:
+            pass
+
         return skills
 
     def normalize_skill(self, skill: str) -> str:

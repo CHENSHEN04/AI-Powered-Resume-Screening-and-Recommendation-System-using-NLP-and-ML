@@ -34,6 +34,8 @@ COMMON_SKILLS = {
     "cybersecurity", "network security", "penetration testing", "siem",
     "jira", "agile", "scrum", "sap", "quickbooks", "financial reporting",
     "tax preparation", "auditing", "legal research", "contract law",
+    "chinese", "mandarin", "cantonese", "english", "malay", "tamil", 
+    "spanish", "french", "german", "japanese", "korean",
 }
 
 REQUIRED_HINTS = (
@@ -45,6 +47,27 @@ RECOMMENDED_HINTS = (
     "good to have", "nice to have",
 )
 NICE_HINTS = ("bonus", "nice to have", "optional", "would be a plus")
+
+
+def _is_noise(value: str) -> bool:
+    lower = value.lower().strip()
+    noise = {
+        "we", "you", "our", "and", "or", "the", "a", "an", "with", "for",
+        "to", "of", "in", "on", "as", "is", "are", "be", "will", "work",
+        "team", "role", "job", "candidate", "experience", "knowledge",
+        "skills", "requirements", "responsibilities", "about", "company",
+        "degree", "years", "minimum", "preferred", "required", "duties", 
+        "apply", "fresh", "responsibilities", "requirements", "qualification",
+        "qualifications", "employment", "type", "salary", "industry", 
+        "category", "position", "submit", "resume", "cv", "application",
+        "location", "address", "city", "state", "country", "office", "workplace",
+        "kuala", "lumpur", "malaysia", "singapore", "kuala lumpur", "role summary",
+        "essential requirements", "apbs", "data management internship","diabetes",
+        "identify", "where necessary", "experience with", "responsible for", "able to",
+        "meeting minutes","including import","assist in"
+    }
+    return lower in noise or len(lower) < 2
+
 
 
 def load_all_known_skills() -> Set[str]:
@@ -60,7 +83,9 @@ def load_all_known_skills() -> Set[str]:
                     for group in ["required_skills", "recommended_skills", "nice_to_have", "nice_to_have_skills"]:
                         for s in cat.get(group, []):
                             if s:
-                                skills.add(s.lower().strip())
+                                s_clean = s.lower().strip()
+                                if not _is_noise(s_clean):
+                                    skills.add(s_clean)
     except Exception:
         pass
     # Load from Database
@@ -71,7 +96,9 @@ def load_all_known_skills() -> Set[str]:
             res = db.supabase.table("skills").select("name").execute()
             if res.data:
                 for row in res.data:
-                    skills.add(row["name"].lower().strip())
+                    s_clean = row["name"].lower().strip()
+                    if not _is_noise(s_clean):
+                        skills.add(s_clean)
     except Exception:
         pass
     return skills
@@ -221,10 +248,12 @@ def extract_skill_candidates(text: str) -> List[str]:
     text_lower = text.lower()
 
     for skill in sorted(DYNAMIC_COMMON_SKILLS, key=len, reverse=True):
-        if re.search(r"(?<![a-z0-9])" + re.escape(skill) + r"(?![a-z0-9])", text_lower):
-            found.append(_canonical_skill(skill))
+        if not _is_noise(skill):
+            if re.search(r"(?<![a-z0-9])" + re.escape(skill) + r"(?![a-z0-9])", text_lower):
+                found.append(_canonical_skill(skill))
 
-    acronym_matches = re.findall(r"\b[A-Z][A-Za-z0-9+#./-]{1,8}\b", text)
+    # Match true acronyms (all uppercase) to avoid false positives like "Duties" or "Apply"
+    acronym_matches = re.findall(r"\b[A-Z][A-Z0-9+#./-]{1,8}\b", text)
     found.extend(_canonical_skill(m) for m in acronym_matches if not _is_noise(m))
 
     for chunk in re.split(r"[,;|()\n]", text):
@@ -232,7 +261,7 @@ def extract_skill_candidates(text: str) -> List[str]:
         if candidate:
             found.append(candidate)
 
-    return _dedupe(found)
+    return [s for s in _dedupe(found) if not _is_noise(s)]
 
 
 def skill_mentioned_in_text(skill: str, text: str) -> bool:
@@ -373,13 +402,4 @@ def _norm_set(values: Iterable[str]) -> Set[str]:
     return {str(v).strip().lower() for v in values if str(v).strip()}
 
 
-def _is_noise(value: str) -> bool:
-    lower = value.lower().strip()
-    noise = {
-        "we", "you", "our", "and", "or", "the", "a", "an", "with", "for",
-        "to", "of", "in", "on", "as", "is", "are", "be", "will", "work",
-        "team", "role", "job", "candidate", "experience", "knowledge",
-        "skills", "requirements", "responsibilities", "about", "company",
-        "degree", "years", "minimum", "preferred", "required",
-    }
-    return lower in noise or len(lower) < 2
+# _is_noise has been defined at the top of the file to resolve initialization ordering.

@@ -621,6 +621,8 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = "", 
             jd_skills = sorted(
                 list({s.lower(): s for s in jd_skills + dynamic_jd_skills}.values())
             )
+            from utils.gap_analyzer import deduplicate_language_skills
+            jd_skills = deduplicate_language_skills(jd_skills)
         except Exception:
             pass
         resume_skills_set = set(s.lower() for s in skill_data["all_skills"])
@@ -671,14 +673,33 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = "", 
     if jd_text and jd_match_result:
         progress.progress(75, text="⚖️ Computing weighted score...")
         try:
+            # Check if target role is in the standard classifier classes
+            known_classes = {
+                "accountant", "advocate", "agriculture", "banking", "business_analyst",
+                "data_science", "database", "devops_engineer", "electrical_engineering",
+                "hr", "information_technology", "java_developer", "mechanical_engineer",
+                "network_security_engineer", "operations_manager", "python_developer",
+                "react_developer", "sales", "testing", "web_designing"
+            }
+            target_role_clean = target_role.lower().strip().replace(' ', '_')
+            is_custom_role = target_role_clean not in known_classes
+            
+            # If it is a custom role, use the zero-shot BERT semantic match score
+            # as fallback for target accuracy so we don't penalize custom roles.
+            if is_custom_role:
+                svm_conf = jd_match_result["overall_score"] / 100.0
+            else:
+                svm_conf = prediction.get("confidence", 0.0)
+
             from utils.weighted_scorer import compute_final_score
             score_result = compute_final_score(
                 bert_score=jd_match_result["overall_score"],
                 matched_skills=matched_skills,
                 jd_skills=st.session_state.get("jd_skills", []),
-                svm_confidence=prediction.get("confidence", 0.0),
+                svm_confidence=svm_conf,
                 resume_text=resume_text,
                 jd_text=jd_text,
+                extra_skills=extra_skills,
             )
             st.session_state["weighted_score_result"] = score_result
             # Patch gap_analysis match_percentage with the improved score
@@ -715,7 +736,9 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = "", 
             evaluator = AIVisualEvaluator()
             visual_analysis = evaluator.evaluate(
                 st.session_state["resume_image"],
-                st.session_state.get("font_metadata")
+                st.session_state.get("font_metadata"),
+                resume_text=resume_text,
+                jd_text=jd_text
             )
             st.session_state["visual_analysis"] = visual_analysis
         except Exception as e:
@@ -884,7 +907,7 @@ def render_teaser_stage():
 <span style="color: #ffa421;">🟡 Moderate &ge; 55%</span>
 <span style="color: #FF6584;">🔴 Weak &lt; 55%</span>
 </div>""", unsafe_allow_html=True)
-            st.caption("Industry accuracy score starts at 0% on your first run while systems warm up. Re-run analysis to see the updated score.")
+            st.caption("ℹ️ **What is Industry Target Accuracy?** It measures how focused your resume's overall vocabulary is on your target job domain. For custom roles, this is dynamically calculated using zero-shot semantic matching against the Job Description to ensure custom roles are not penalized.")
 
     # Quick Stats
     st.markdown("<br>", unsafe_allow_html=True)
@@ -1270,11 +1293,28 @@ def render_dashboard_stage():
 </li>""")
             
         if svm_val < 80:
+            known_classes = {
+                "accountant", "advocate", "agriculture", "banking", "business_analyst",
+                "data_science", "database", "devops_engineer", "electrical_engineering",
+                "hr", "information_technology", "java_developer", "mechanical_engineer",
+                "network_security_engineer", "operations_manager", "python_developer",
+                "react_developer", "sales", "testing", "web_designing"
+            }
+            target_role_clean = target_role.lower().strip().replace(' ', '_')
+            is_custom = target_role_clean not in known_classes
+            
+            if is_custom:
+                why_low = "Your resume does not demonstrate a strong enough semantic focus on the context of this custom job description."
+                core_action = "Align the vocabulary, highlights, and toolsets of your accomplishments directly with the unique phrasing, responsibilities, and methodologies described in the Job Description. (Note: Custom roles utilize zero-shot semantic matching instead of the static classifier)."
+            else:
+                why_low = "Your overall profile reads too broadly or matches multiple professional categories, dropping classifier confidence for your target role."
+                core_action = f"Open your resume with a clear <span style=\"color: #6C63FF; font-weight: 700;\">professional summary header</span> containing your target job title (e.g., <em>\"{target_role.replace('_', ' ').title()} with 2+ years of experience...\"</em>). Focus your experience descriptions purely on tasks specific to this professional domain."
+                
             roadmap_items.append(f"""<li style="margin-bottom: 1.3rem; padding-bottom: 1.0rem; border-bottom: 1px solid rgba(255,255,255,0.06);">
-<div style="font-weight: 700; color: #FAFAFA; font-size: 1.1rem; margin-bottom: 0.3rem;">💼 3. Boost Industry Target Accuracy (Current Score: {svm_val:.1f}% | 10% weight)</div>
+<div style="font-weight: 700; color: #FAFAFA; font-size: 1.1rem; margin-bottom: 0.3rem;">💼 3. Boost Profile Focus (Industry Target Accuracy) (Current Score: {svm_val:.1f}% | 10% weight)</div>
 <div style="color: #D1D1D6; font-size: 0.95rem; line-height: 1.55; margin-left: 1.5rem;">
-<strong>Why it is low:</strong> Your overall profile reads too broadly or matches multiple professional categories, dropping classifier confidence for your target role.
-<br><span style="color: #43E97B; font-weight: 600;">💡 Core Action:</span> Open your resume with a clear <span style="color: #6C63FF; font-weight: 700;">professional summary header</span> containing your target job title (e.g., <em>"{target_role.replace('_', ' ').title()} with 2+ years of experience..."</em>). Focus your experience descriptions purely on tasks specific to this professional domain.
+<strong>Why it is low:</strong> {why_low}
+<br><span style="color: #43E97B; font-weight: 600;">💡 Core Action:</span> {core_action}
 </div>
 </li>""")
             
@@ -1534,6 +1574,90 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
             </div>
             """, unsafe_allow_html=True)
             
+            # Row of clean visual status cards
+            st.markdown("#### 🔍 Structural Formatting Audits")
+            
+            font_str = visual_analysis.get('font_family', 'N/A')
+            import re
+            match = re.search(r"'(.*?)'", font_str)
+            font_label = match.group(1) if match else "Standard"
+            if "non-standard" in font_str.lower() or "unconventional" in font_str.lower():
+                font_status = f"❌ {font_label}"
+            else:
+                if font_str == "N/A" or "no font metadata" in font_str.lower():
+                    font_status = "✅ Standard"
+                else:
+                    font_status = f"✅ {font_label}"
+                
+            size_str = visual_analysis.get('font_size', 'N/A')
+            match_size = re.search(r"(\d+\.?\d*)pt", size_str)
+            size_label = f"{match_size.group(1)}pt" if match_size else "11pt"
+            if "outside" in size_str.lower() or "sub-optimal" in size_str.lower():
+                size_status = f"❌ {size_label}"
+            else:
+                size_status = f"✅ {size_label}"
+                
+            ats_str = visual_analysis.get('ats_friendly', 'N/A')
+            if "not" in ats_str.lower() or "multi-column" in ats_str.lower():
+                ats_status = "❌ Multi-Col"
+            else:
+                ats_status = "✅ Single-Col"
+                
+            bullets_str = visual_analysis.get('bullet_points_check', 'N/A')
+            if "flagged" in bullets_str.lower() or "high" in bullets_str.lower() or "too many" in bullets_str.lower():
+                bullets_status = "❌ Flagged"
+            else:
+                bullets_status = "✅ Optimal"
+                
+            gaps = visual_analysis.get('keyword_gaps', [])
+            if gaps:
+                keywords_status = f"⚠️ {len(gaps)} Missing"
+            else:
+                keywords_status = "✅ 0 Missing"
+
+            c_aud1, c_aud2, c_aud3, c_aud4, c_aud5 = st.columns(5)
+            with c_aud1:
+                st.markdown(f"""
+                <div class="glass-panel" style="padding: 0.8rem; text-align: center; border-bottom: 3px solid {'#43E97B' if '✅' in font_status else '#FF6584'}; margin-bottom: 1.5rem;">
+                    <div style="font-size: 0.72rem; color: #A1A1AA; font-weight: 600; text-transform: uppercase;">Typography</div>
+                    <div style="font-size: 1.05rem; font-weight: 700; color: #FAFAFA; margin: 0.25rem 0;">{font_status}</div>
+                    <div style="font-size: 0.68rem; color: #71717A;">{'Standard Font' if '✅' in font_status else 'Unconventional'}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with c_aud2:
+                st.markdown(f"""
+                <div class="glass-panel" style="padding: 0.8rem; text-align: center; border-bottom: 3px solid {'#43E97B' if '✅' in size_status else '#FF6584'}; margin-bottom: 1.5rem;">
+                    <div style="font-size: 0.72rem; color: #A1A1AA; font-weight: 600; text-transform: uppercase;">Font Size</div>
+                    <div style="font-size: 1.05rem; font-weight: 700; color: #FAFAFA; margin: 0.25rem 0;">{size_status}</div>
+                    <div style="font-size: 0.68rem; color: #71717A;">{'10-12pt Range' if '✅' in size_status else 'Sub-optimal'}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with c_aud3:
+                st.markdown(f"""
+                <div class="glass-panel" style="padding: 0.8rem; text-align: center; border-bottom: 3px solid {'#43E97B' if '✅' in ats_status else '#FF6584'}; margin-bottom: 1.5rem;">
+                    <div style="font-size: 0.72rem; color: #A1A1AA; font-weight: 600; text-transform: uppercase;">ATS Layout</div>
+                    <div style="font-size: 1.05rem; font-weight: 700; color: #FAFAFA; margin: 0.25rem 0;">{ats_status}</div>
+                    <div style="font-size: 0.68rem; color: #71717A;">{'Single Column' if '✅' in ats_status else 'Multi-Column'}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with c_aud4:
+                st.markdown(f"""
+                <div class="glass-panel" style="padding: 0.8rem; text-align: center; border-bottom: 3px solid {'#43E97B' if '✅' in bullets_status else '#FF6584'}; margin-bottom: 1.5rem;">
+                    <div style="font-size: 0.72rem; color: #A1A1AA; font-weight: 600; text-transform: uppercase;">Bullet Count</div>
+                    <div style="font-size: 1.05rem; font-weight: 700; color: #FAFAFA; margin: 0.25rem 0;">{bullets_status}</div>
+                    <div style="font-size: 0.68rem; color: #71717A;">{'Optimal Density' if '✅' in bullets_status else 'Too Dense'}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with c_aud5:
+                border_color = '#43E97B' if '✅' in keywords_status else '#F39C12' if '⚠️' in keywords_status else '#FF6584'
+                st.markdown(f"""
+                <div class="glass-panel" style="padding: 0.8rem; text-align: center; border-bottom: 3px solid {border_color}; margin-bottom: 1.5rem;">
+                    <div style="font-size: 0.72rem; color: #A1A1AA; font-weight: 600; text-transform: uppercase;">JD Keywords</div>
+                    <div style="font-size: 1.05rem; font-weight: 700; color: #FAFAFA; margin: 0.25rem 0;">{keywords_status}</div>
+                    <div style="font-size: 0.68rem; color: #71717A;">{'No Gaps' if '✅' in keywords_status else 'Missing Keywords'}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
             # 3. Split-view: Image Hotspots vs Red Flags List
             vis_left, vis_right = st.columns([5, 4], gap="large")
             
@@ -1655,6 +1779,177 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
                         """, unsafe_allow_html=True)
                 else:
                     st.success("🎉 No layout formatting issues detected! Your resume design is flawless.")
+                    
+                # Display Keyword Gaps
+                if visual_analysis.get("keyword_gaps"):
+                    st.markdown("#### 🔑 Missing JD Keywords")
+                    st.caption("These keywords from the job description are missing in your resume. Incorporating them can boost your matching score:")
+                    tag_html = "".join(f'<span style="display:inline-block; background:rgba(243,156,18,0.12); color:#F39C12; border:1px solid rgba(243,156,18,0.3); padding:0.25rem 0.6rem; border-radius:12px; font-size:0.75rem; margin-right:0.4rem; margin-bottom:0.4rem; font-weight:600;">{kw}</span>' for kw in visual_analysis["keyword_gaps"])
+                    st.markdown(f'<div style="margin-bottom: 1rem;">{tag_html}</div>', unsafe_allow_html=True)
+                    st.markdown("""
+                    <div class="glass-panel" style="padding:0.8rem; border-left:3px solid #F39C12; background:rgba(243,156,18,0.02); font-size:0.85rem; margin-bottom: 1.5rem;">
+                        💡 <strong>Recommendation:</strong> Integrate these terms naturally in your Work Experience or Projects bullet points to highlight your relevant competency. Use the <strong>Job Tailoring AI Writer</strong> below to write optimized bullet points!
+                    </div>
+                    """, unsafe_allow_html=True)
+
+            # 4. Job Tailoring AI Writer
+            st.markdown("---")
+            st.markdown("### ✍️ Job Tailoring AI Writer")
+            st.caption("Select a section of your resume to tailor and optimize for the Job Description. Ask the AI coach for refinement suggestions.")
+            
+            # Helper to extract resume sections
+            def extract_resume_section(text: str, section_name: str) -> str:
+                if not text:
+                    return ""
+                text_lower = text.lower()
+                patterns = {
+                    "Summary": [r"(summary|objective|profile|professional summary|about me|about\s+me)"],
+                    "Work Experience": [r"(experience|work experience|employment|history|professional experience|career history)"],
+                    "Projects": [r"(projects|academic projects|personal projects|key projects|research projects)"],
+                    "Skills": [r"(skills|technical skills|key skills|competencies|areas of expertise|expertise)"]
+                }
+                all_headers = []
+                for sec, pats in patterns.items():
+                    for pat in pats:
+                        for match in re.finditer(r"\b" + pat + r"\b", text_lower):
+                            all_headers.append({
+                                "section": sec,
+                                "start": match.start(),
+                                "end": match.end(),
+                                "text": match.group(0)
+                            })
+                if not all_headers:
+                    return ""
+                all_headers = sorted(all_headers, key=lambda x: x["start"])
+                target_idx = -1
+                for idx, h in enumerate(all_headers):
+                    if h["section"] == section_name:
+                        target_idx = idx
+                        break
+                if target_idx == -1:
+                    return ""
+                start_pos = all_headers[target_idx]["end"]
+                if target_idx < len(all_headers) - 1:
+                    end_pos = all_headers[target_idx + 1]["start"]
+                else:
+                    end_pos = len(text)
+                sec_text = text[start_pos:end_pos].strip()
+                sec_text = re.sub(r"^[:\s\-\•\.\,]+", "", sec_text)
+                return sec_text
+
+            resume_text_to_tailor = st.session_state["parse_result"].text if st.session_state.get("parse_result") else ""
+            jd_text_to_tailor = st.session_state.get("jd_text", "")
+            
+            c_tailor1, c_tailor2 = st.columns([2, 3])
+            
+            with c_tailor1:
+                selected_section = st.selectbox(
+                    "Resume Section to Tailor",
+                    ["Summary", "Work Experience", "Projects", "Skills"],
+                    key="tailor_section_select"
+                )
+                
+                # Fetch section content automatically
+                extracted_content = extract_resume_section(resume_text_to_tailor, selected_section)
+                
+                # Pre-populate session state if section changed or not initialized
+                state_key = f"tailor_current_{selected_section}"
+                if state_key not in st.session_state or not st.session_state[state_key]:
+                    st.session_state[state_key] = extracted_content
+                    
+                current_section_content = st.text_area(
+                    "Current Section Content",
+                    value=st.session_state[state_key],
+                    height=250,
+                    key=f"tailor_text_area_{selected_section}"
+                )
+                # Keep state updated
+                st.session_state[state_key] = current_section_content
+                
+                if st.button("✨ Tailor for JD", use_container_width=True, key="tailor_btn"):
+                    if not jd_text_to_tailor:
+                        st.error("⚠️ Please provide a Job Description on the upload stage first.")
+                    elif not current_section_content.strip():
+                        st.error("⚠️ Current section content is empty. Please enter or paste some text first.")
+                    else:
+                        st.session_state["tailor_chat_history"] = []
+                        st.session_state["tailor_suggestion"] = ""
+                        
+                        assistant = AIAssistant()
+                        
+                        placeholder = st.empty()
+                        tailored_stream = assistant.tailor_section_stream(
+                            selected_section,
+                            current_section_content,
+                            jd_text_to_tailor
+                        )
+                        
+                        full_response = ""
+                        for chunk in tailored_stream:
+                            full_response += chunk
+                            placeholder.markdown(f"""
+                            <div class="glass-panel" style="padding:1.1rem; border-left:4px solid #43E97B; min-height: 150px; white-space: pre-wrap;">
+                                {full_response}
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                        st.session_state["tailor_suggestion"] = full_response
+                        st.rerun()
+            
+            with c_tailor2:
+                st.markdown("#### 🪄 Optimized Suggestion")
+                suggestion = st.session_state.get("tailor_suggestion", "")
+                
+                if suggestion:
+                    st.markdown(f"""
+                    <div class="glass-panel" style="padding:1.1rem; border-left:4px solid #43E97B; min-height: 200px; white-space: pre-wrap; margin-bottom: 1rem;">
+                        {suggestion}
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Refinement chat conversation history
+                    chat_hist = st.session_state.get("tailor_chat_history", [])
+                    for msg in chat_hist:
+                        role_label = "👤 **You**" if msg["role"] == "user" else "🤖 **AI Writer**"
+                        border_clr = "#3498DB" if msg["role"] == "user" else "#43E97B"
+                        st.markdown(f"""
+                        <div class="glass-panel" style="padding:0.7rem; border-left:3px solid {border_clr}; margin-bottom:0.5rem; background:rgba(255,255,255,0.01)">
+                            <div style="font-size:0.8rem; color:#A1A1AA; margin-bottom:0.2rem;">{role_label}</div>
+                            <div style="font-size:0.9rem; white-space:pre-wrap;">{msg["content"]}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    # Refinement chat input
+                    refine_input = st.chat_input("Ask to refine the suggestion (e.g. 'shorten it', 'make it sound more senior')...", key="tailor_chat_refine")
+                    if refine_input:
+                        chat_hist.append({"role": "user", "content": refine_input})
+                        st.session_state["tailor_chat_history"] = chat_hist
+                        
+                        assistant = AIAssistant()
+                        
+                        placeholder = st.empty()
+                        refine_stream = assistant.refine_section_stream(
+                            selected_section,
+                            suggestion,
+                            jd_text_to_tailor,
+                            refine_input
+                        )
+                        
+                        full_response = ""
+                        for chunk in refine_stream:
+                            full_response += chunk
+                            placeholder.markdown(f"""
+                            <div class="glass-panel" style="padding:1.1rem; border-left:4px solid #3498DB; min-height: 150px; white-space: pre-wrap;">
+                                {full_response}
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                        chat_hist.append({"role": "assistant", "content": f"Refined suggestion:\n\n{full_response}"})
+                        st.session_state["tailor_suggestion"] = full_response
+                        st.session_state["tailor_chat_history"] = chat_hist
+                        st.rerun()
+                else:
+                    st.info("💡 Select a section on the left and click **Tailor for JD** to generate an optimized, keyword-enriched resume draft.")
 
     with tab_plan:
         st.markdown("### 📚 Recommended Learning Paths")

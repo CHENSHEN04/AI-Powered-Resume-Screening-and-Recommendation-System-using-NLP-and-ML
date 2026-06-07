@@ -141,6 +141,30 @@ class TestGapAnalyzer:
 
     @patch('utils.gap_analyzer.json.load')
     @patch('pathlib.Path.exists')
+    def test_analyze_gaps_with_transferable_bonus(self, mock_exists, mock_json_load):
+        """Test that extra skills provide a bonus to match_percentage in analyze_gaps."""
+        mock_exists.return_value = True
+        mock_json_load.side_effect = [MOCK_MARKET_STANDARDS, MOCK_LEARNING_RESOURCES]
+        
+        analyzer = GapAnalyzer()
+        
+        # User has required skills: HTML, CSS, JavaScript
+        # Also has 5 extra skills not in standards: Excel, Python, Java, SQL, SAP
+        user_skills = ["HTML", "CSS", "JavaScript", "Excel", "Python", "Java", "SQL", "SAP"]
+        result = analyzer.analyze_gaps(user_skills, "Frontend Developer")
+        
+        # Required skills weight sum = 3 * 1.0 = 3.0
+        # Recommended skills weight sum = 2 * 0.5 = 1.0
+        # Nice weight sum = 1 * 0.2 = 0.2
+        # Total weight = 4.2
+        # Matched weight = 3.0 (from required) + 0.0 (from recommended/nice) = 3.0
+        # Base match % = 3.0 / 4.2 * 100 = 71.4%
+        # User has 5 extra skills -> bonus is 5.0%
+        # Boosted match % = 71.4% + 5.0% = 76.4%
+        assert result["match_percentage"] == 76.4
+
+    @patch('utils.gap_analyzer.json.load')
+    @patch('pathlib.Path.exists')
     def test_normalize_role_name_cases(self, mock_exists, mock_json_load):
         """Test role name normalization."""
         mock_exists.return_value = True
@@ -253,9 +277,43 @@ class TestGapAnalyzer:
         # 6. Target "Mandarin" matches user having "Chinese"
         assert analyzer._is_skill_matched("Mandarin", {"chinese"})
 
-
-
-
+    @patch('utils.gap_analyzer.json.load')
+    @patch('pathlib.Path.exists')
+    def test_noise_words_filtered(self, mock_exists, mock_json_load):
+        """Test that noise words are correctly filtered out from gaps."""
+        mock_exists.return_value = True
+        
+        # Mock standards containing noise words in required_skills and recommended_skills
+        standards_with_noise = {
+            "job_categories": {
+                "test_role": {
+                    "title": "Test Role",
+                    "required_skills": ["Python", "Role Summary", "Essential Requirements"],
+                    "recommended_skills": ["Git", "APBS", "Data Management Internship"],
+                    "nice_to_have": ["Figma"],
+                    "weights": {"required": 1.0, "recommended": 0.5, "nice_to_have": 0.2}
+                }
+            }
+        }
+        mock_json_load.side_effect = [standards_with_noise, MOCK_LEARNING_RESOURCES]
+        
+        analyzer = GapAnalyzer()
+        result = analyzer.analyze_gaps(["Python"], "test_role")
+        
+        # Verify noise words are not in required_skills, recommended_skills, or missing lists
+        assert "Role Summary" not in result["required_skills"]
+        assert "Essential Requirements" not in result["required_skills"]
+        assert "APBS" not in result["recommended_skills"]
+        assert "Data Management Internship" not in result["recommended_skills"]
+        
+        assert "Role Summary" not in result["missing_required"]
+        assert "Essential Requirements" not in result["missing_required"]
+        assert "APBS" not in result["missing_recommended"]
+        assert "Data Management Internship" not in result["missing_recommended"]
+        
+        # Actual valid skills should still be present
+        assert "Python" in result["required_skills"]
+        assert "Git" in result["missing_recommended"]
 class TestRoleStandardsResolver:
     def test_rejects_generic_ai_fallback_skills(self):
         standards = {

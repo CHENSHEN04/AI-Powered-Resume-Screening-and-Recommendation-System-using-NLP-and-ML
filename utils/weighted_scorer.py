@@ -83,6 +83,7 @@ def compute_final_score(
     svm_confidence: float,    # 0-1 from JobClassifier.predict()
     resume_text: str,
     jd_text: str,
+    extra_skills: List[str] = None, # Optional extra/transferable skills list
 ) -> Dict:
     """
     Compute the weighted final match score.
@@ -96,7 +97,19 @@ def compute_final_score(
         }
     """
     bert_component      = (bert_score / 100) * WEIGHT_BERT
-    skill_component     = _skill_overlap_score(matched_skills, jd_skills) * WEIGHT_SKILL
+    
+    # Calculate base skill overlap score
+    base_skill_overlap = _skill_overlap_score(matched_skills, jd_skills)
+    
+    # Apply transferable skill bonus (+1.0% per extra skill, capped at 10.0%)
+    # directly to the Technical Skills Match score
+    bonus = 0.0
+    if extra_skills:
+        bonus = min(len(extra_skills) * 0.01, 0.10)
+        
+    boosted_skill_overlap = min(base_skill_overlap + bonus, 1.0)
+    skill_component     = boosted_skill_overlap * WEIGHT_SKILL
+    
     svm_component       = svm_confidence * WEIGHT_SVM
     edu_score           = _education_score(resume_text, jd_text)
     education_component = edu_score * WEIGHT_EDUCATION
