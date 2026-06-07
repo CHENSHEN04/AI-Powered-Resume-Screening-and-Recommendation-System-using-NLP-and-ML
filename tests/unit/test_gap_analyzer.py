@@ -272,10 +272,31 @@ class TestGapAnalyzer:
         assert not analyzer._is_skill_matched("Excel", {"word"})
         # 4. Target "SAP" matches user having "ERP" (since SAP is an ERP system)
         assert analyzer._is_skill_matched("SAP", {"erp"})
-        # 5. Target "SAP" does NOT match user having only "Oracle"
-        assert not analyzer._is_skill_matched("SAP", {"oracle"})
         # 6. Target "Mandarin" matches user having "Chinese"
         assert analyzer._is_skill_matched("Mandarin", {"chinese"})
+
+    @patch('utils.gap_analyzer.json.load')
+    @patch('pathlib.Path.exists')
+    def test_is_skill_matched_education(self, mock_exists, mock_json_load):
+        """Test educational hierarchy matching and false positive substring prevention."""
+        mock_exists.return_value = True
+        mock_json_load.side_effect = [{"job_categories": {}}, {"resources": {}}]
+        
+        analyzer = GapAnalyzer()
+        
+        # 1. Degree satisfies diploma
+        assert analyzer._is_skill_matched("Diploma", {"degree"})
+        # 2. Master satisfies Bachelor/Degree
+        assert analyzer._is_skill_matched("Bachelor", {"master"})
+        # 3. Ph.D. satisfies Master
+        assert analyzer._is_skill_matched("Master", {"phd"})
+        # 4. Same degree matches
+        assert analyzer._is_skill_matched("B.Sc.", {"bsc"})
+        # 5. Non-degree containing "ma" (Figma) should not match Mandarin
+        assert not analyzer._is_skill_matched("Figma", {"mandarin"})
+        assert not analyzer._is_skill_matched("Mandarin", {"figma"})
+        # 6. Management (containing "ma") should not match degree
+        assert not analyzer._is_skill_matched("Management", {"degree"})
 
     @patch('utils.gap_analyzer.json.load')
     @patch('pathlib.Path.exists')

@@ -354,11 +354,9 @@ class DatabaseManager:
             cat_data = cat_res.data[0]
             cat_id = cat_data["id"]
             
-            # 2. Fetch Skills
-            # Join market_standards -> skills
-            # Note: Supabase-py select query with join
+            # 2. Fetch Skills using separate robust queries to avoid PostgREST relationship caching issues
             standards_res = self.supabase.table("market_standards")\
-                .select("importance_level, skills(name)")\
+                .select("importance_level, skill_id")\
                 .eq("job_category_id", cat_id)\
                 .execute()
                 
@@ -370,17 +368,26 @@ class DatabaseManager:
                 "nice_to_have": []
             }
             
-            for item in standards_res.data:
-                # item["skills"] is a dict {"name": "..."} because it's a join on FK
-                skill_name = item["skills"]["name"] if item.get("skills") else "Unknown"
-                importance = item["importance_level"]
-                
-                if importance == "required":
-                    result["required_skills"].append(skill_name)
-                elif importance == "recommended":
-                    result["recommended_skills"].append(skill_name)
-                elif importance == "nice_to_have":
-                    result["nice_to_have"].append(skill_name)
+            if standards_res.data:
+                skill_ids = [item["skill_id"] for item in standards_res.data if item.get("skill_id")]
+                if skill_ids:
+                    skills_res = self.supabase.table("skills")\
+                        .select("id, name")\
+                        .in_("id", skill_ids)\
+                        .execute()
+                    if skills_res.data:
+                        skill_map = {row["id"]: row["name"] for row in skills_res.data}
+                        for item in standards_res.data:
+                            s_id = item.get("skill_id")
+                            if s_id in skill_map:
+                                skill_name = skill_map[s_id]
+                                importance = item["importance_level"]
+                                if importance == "required":
+                                    result["required_skills"].append(skill_name)
+                                elif importance == "recommended":
+                                    result["recommended_skills"].append(skill_name)
+                                elif importance == "nice_to_have":
+                                    result["nice_to_have"].append(skill_name)
             
             return result
         except Exception as e:
@@ -533,28 +540,34 @@ class DatabaseManager:
         if not self.supabase or not skill_names: return {}
         
         try:
-            # We can't efficiently do "WHERE skill_name IN (...)" with join in one go 
-            # unless we query learning_resources joined with skills filtered by name list.
-            # Supabase-py 'in_' filter: .in_("skills.name", skill_names) might work with !inner join.
-            
-            # Using !inner to filter by related table
-            res = self.supabase.table("learning_resources")\
-                .select("title, url, resource_type, difficulty, skills!inner(name)")\
-                .in_("skills.name", skill_names)\
+            # Resolve skills to IDs first to avoid PostgREST relationship caching joins
+            skills_res = self.supabase.table("skills")\
+                .select("id, name")\
+                .in_("name", skill_names)\
                 .execute()
                 
             output = {}
-            for item in res.data:
-                skill_name = item["skills"]["name"]
-                if skill_name not in output:
-                    output[skill_name] = []
+            if skills_res.data:
+                skill_id_map = {row["id"]: row["name"] for row in skills_res.data}
+                skill_ids = list(skill_id_map.keys())
                 
-                output[skill_name].append({
-                    "title": item["title"],
-                    "url": item["url"],
-                    "type": item.get("resource_type", "Resource"),
-                    "difficulty": item.get("difficulty", "General")
-                })
+                res = self.supabase.table("learning_resources")\
+                    .select("title, url, resource_type, difficulty, skill_id")\
+                    .in_("skill_id", skill_ids)\
+                    .execute()
+                    
+                for item in res.data:
+                    s_id = item.get("skill_id")
+                    if s_id in skill_id_map:
+                        skill_name = skill_id_map[s_id]
+                        if skill_name not in output:
+                            output[skill_name] = []
+                        output[skill_name].append({
+                            "title": item["title"],
+                            "url": item["url"],
+                            "type": item.get("resource_type", "Course"),
+                            "difficulty": item.get("difficulty", "Beginner")
+                        })
             return output
         except Exception as e:
             return {}

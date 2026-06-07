@@ -659,7 +659,7 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = "", 
         matched_skills = matched_req + matched_rec + matched_nth
         missing_skills = missing_req + missing_rec + missing_nth
         
-        target_skills_set = set(req_skills + rec_skills + nth_skills)
+        target_skills_set = {s.lower() for s in req_skills + rec_skills + nth_skills}
         extra_skills = [
             s for s in skill_data["all_skills"] 
             if not analyzer._is_skill_matched(s, target_skills_set)

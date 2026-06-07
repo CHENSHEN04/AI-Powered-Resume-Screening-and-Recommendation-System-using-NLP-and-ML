@@ -62,11 +62,18 @@ def _is_noise(value: str) -> bool:
         "category", "position", "submit", "resume", "cv", "application",
         "location", "address", "city", "state", "country", "office", "workplace",
         "kuala", "lumpur", "malaysia", "singapore", "kuala lumpur", "role summary",
-        "essential requirements", "apbs", "data management internship","diabetes",
+        "essential requirements", "apbs", "data management internship", "diabetes",
         "identify", "where necessary", "experience with", "responsible for", "able to",
-        "meeting minutes","including import","assist in"
+        "meeting minutes", "including import", "assist in", "business", "assist", "speaking",
+        "intern", "internship", "key", "key responsibilities", "provide", "support",
+        "action", "champion", "enabler", "ensure", "enter", "steward", "timely",
+        "verification", "review", "approve", "monitor", "service", "quality", "integrity",
+        "common", "general", "basic", "must", "nice to have", "competency", "employee",
+        "staff", "ability", "ability to", "psa"
     }
     return lower in noise or len(lower) < 2
+
+
 
 
 
@@ -352,6 +359,32 @@ def _clean_candidate(chunk: str) -> Optional[str]:
         return None
     if lower in DYNAMIC_COMMON_SKILLS:
         return _canonical_skill(lower)
+        
+    # Filter out chunks starting with common verbs or function words if not in DYNAMIC_COMMON_SKILLS
+    words = lower.split()
+    if words:
+        start_word = words[0]
+        stop_starts = {
+            "identify", "assist", "provide", "support", "ensure", "perform", "develop",
+            "create", "design", "manage", "lead", "handle", "coordinate", "prepare",
+            "maintain", "collaborate", "work", "communicate", "report", "write", "read",
+            "speak", "analyze", "implement", "deliver", "drive", "track", "monitor",
+            "execute", "review", "approve", "evaluate", "assess", "recommend", "advise",
+            "facilitate", "participate", "contribute", "where", "when", "why", "how",
+            "who", "what", "which", "whose", "whom", "if", "whether", "although", "though",
+            "while", "during", "before", "after", "since", "until", "unless", "because",
+            "including", "excluding", "with", "without", "about", "against", "among",
+            "between", "through", "above", "below", "under", "over", "necessary", "required",
+            "preferred", "highly", "strongly", "good", "excellent", "strong", "basic",
+            "common", "general", "timely", "proper", "correct", "accurate", "successful",
+            "meeting", "minutes", "task", "tasks", "duty", "duties", "responsibility",
+            "responsibilities", "requirement", "requirements", "qualification", "qualifications",
+            "experience", "experiences", "we", "you", "our", "their", "his", "her", "my", "your",
+            "fresh", "freshly", "apply", "applying", "where necessary", "necessary steps"
+        }
+        if start_word in stop_starts:
+            return None
+            
     if re.fullmatch(r"[A-Z][A-Za-z0-9+#./-]*(?:\s[A-Z][A-Za-z0-9+#./-]*){0,2}", chunk):
         return chunk
     if re.fullmatch(r"[a-zA-Z0-9+#./-]+(?:\s[a-zA-Z0-9+#./-]+){0,1}", chunk):

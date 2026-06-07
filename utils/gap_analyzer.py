@@ -8,7 +8,7 @@ Implements the logic specified in OUTPUT_SPECIFICATION.md section 2.1.2 (Hybrid 
 
 import json
 from pathlib import Path
-from typing import Dict, List, Set, Any
+from typing import Dict, List, Set, Any, Optional
 import joblib
 import streamlit as st
 
@@ -18,6 +18,7 @@ from utils.role_standards_resolver import (
     normalize_role_slug,
     normalize_standards,
     resolve_role_standards,
+    _is_noise,
 )
 
 # ==============================================================================
@@ -210,21 +211,9 @@ class GapAnalyzer:
             
         role_data = normalize_standards(role_data, target_role, role_data.get("_source", "standards"))
         
-        # Filter out generic noise words
-        noise_words = {
-            "intern", "internship", "key", "key responsibilities", "provide", "support", 
-            "action", "champion", "enabler", "ensure", "enter", "responsibilities", 
-            "steward", "timely", "verification", "review", "approve", "monitor", 
-            "service", "quality", "integrity", "common", "general", "basic", "must",
-            "required", "recommended", "nice to have", "competency", "role", "task",
-            "job", "candidate", "employee", "staff", "skills", "ability", "ability to",
-            "duties", "apply", "fresh", "kuala", "lumpur", "malaysia", "singapore", "psa",
-            "role summary", "essential requirements", "apbs", "data management internship"
-        }
-        
-        required = [s for s in role_data.get("required_skills", []) if s.lower().strip() not in noise_words]
-        recommended = [s for s in role_data.get("recommended_skills", []) if s.lower().strip() not in noise_words]
-        nice_to_have = [s for s in role_data.get("nice_to_have", []) if s.lower().strip() not in noise_words]
+        required = [s for s in role_data.get("required_skills", []) if not _is_noise(s)]
+        recommended = [s for s in role_data.get("recommended_skills", []) if not _is_noise(s)]
+        nice_to_have = [s for s in role_data.get("nice_to_have", []) if not _is_noise(s)]
         
         # Deduplicate redundant language variations across required, recommended, and nice_to_have
         all_req_skills = required + recommended + nice_to_have
@@ -411,6 +400,32 @@ Return ONLY valid JSON. No markdown block backticks, no extra text."""
                 
         return paths
 
+    def _get_education_level(self, skill: str) -> Optional[int]:
+        """
+        Extract the highest educational level from a skill string using whole word matching.
+        """
+        import re
+        s = skill.lower().strip()
+        s = s.replace("b.s.", "bs").replace("b.a.", "ba").replace("m.s.", "ms").replace("m.a.", "ma").replace("ph.d.", "phd")
+        s = s.replace("b.sc.", "bsc").replace("m.sc.", "msc")
+        
+        words = re.findall(r"\b[a-z0-9]+\b", s)
+        
+        edu_hierarchy = {
+            "diploma": 1,
+            "degree": 2, "bachelor": 2, "bsc": 2, "ba": 2, "bs": 2, "undergraduate": 2,
+            "master": 3, "msc": 3, "ma": 3, "ms": 3, "mba": 3, "postgraduate": 3,
+            "phd": 4, "doctor": 4, "doctorate": 4
+        }
+        
+        max_level = None
+        for word in words:
+            if word in edu_hierarchy:
+                level = edu_hierarchy[word]
+                if max_level is None or level > max_level:
+                    max_level = level
+        return max_level
+
     def _is_skill_matched(self, target_skill: str, user_skills_set: Set[str]) -> bool:
         """
         Check if a target skill is matched in the user's extracted skills set.
@@ -425,24 +440,12 @@ Return ONLY valid JSON. No markdown block backticks, no extra text."""
             return True
             
         # 2. Educational Hierarchy Match (Degree satisfies Diploma)
-        edu_hierarchy = {
-            "diploma": 1,
-            "degree": 2, "bachelor": 2, "bsc": 2, "ba": 2, "b.s.": 2, "b.a.": 2, "undergraduate": 2,
-            "master": 3, "msc": 3, "ma": 3, "mba": 3, "m.s.": 3, "m.a.": 3, "postgraduate": 3,
-            "phd": 4, "doctor": 4, "doctorate": 4, "ph.d.": 4
-        }
-        
-        target_edu_level = None
-        for term, level in edu_hierarchy.items():
-            if term in ts_lower:
-                target_edu_level = level
-                break
-                
+        target_edu_level = self._get_education_level(ts_lower)
         if target_edu_level is not None:
             for u_skill in user_skills_set:
-                for term, level in edu_hierarchy.items():
-                    if term in u_skill and level >= target_edu_level:
-                        return True
+                u_level = self._get_education_level(u_skill)
+                if u_level is not None and u_level >= target_edu_level:
+                    return True
                         
         # 3. Semantic / Equivalent / Alias groups (asymmetric mapping)
         office_suite = {
