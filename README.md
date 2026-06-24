@@ -2,7 +2,7 @@
 > **Vision**: A "Deep Career Coach" for students and fresh graduates. 
 > **Status**: Implementation Phase (Dual Frontend: Streamlit Monolith Demo & Next.js/FastAPI Decoupled App)
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://<your-app-name>.streamlit.app/)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://chenshen04-ai-powered-resume-screening-and-recommend-app-dnjfw4.streamlit.app/)
 
 ---
 
