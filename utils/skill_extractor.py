@@ -40,6 +40,20 @@ class SkillExtractor:
         self.skill_db = self._build_skill_db()
         self.aliases = self.standards.get("skill_aliases", {})
         
+        # Pre-compile the union database skills regex (sorted by length descending)
+        sorted_skills = sorted(list(self.skill_db), key=len, reverse=True)
+        if sorted_skills:
+            self.db_regex = re.compile(r'\b(' + '|'.join(re.escape(s) for s in sorted_skills) + r')\b', re.IGNORECASE)
+        else:
+            self.db_regex = None
+
+        # Pre-compile the union alias regex (sorted by length descending)
+        sorted_aliases = sorted(list(self.aliases.keys()), key=len, reverse=True)
+        if sorted_aliases:
+            self.alias_regex = re.compile(r'\b(' + '|'.join(re.escape(a) for a in sorted_aliases) + r')\b', re.IGNORECASE)
+        else:
+            self.alias_regex = None
+        
     @staticmethod
     @st.cache_resource
     def _load_spacy_model():
@@ -198,23 +212,23 @@ class SkillExtractor:
             if not section_text: continue
             
             # Extract from this section
-            # (Reuse the scanning logic - simplified for brevity here)
             text_lower = section_text.lower()
             
             # Combine skill_db scanning + Alias scanning
             matches = set()
             
-            # 1. DB Scan
-            for skill_lower in self.skill_db:
-                escaped_skill = re.escape(skill_lower)
-                # Word boundary check
-                if re.search(r'\b' + escaped_skill + r'\b', text_lower):
-                    matches.add(skill_lower)
+            # 1. DB Scan (one-pass regex)
+            if self.db_regex:
+                for match in self.db_regex.finditer(text_lower):
+                    matches.add(match.group(0).lower())
             
-            # 2. Alias Scan
-            for alias, real_name in self.aliases.items():
-                 if re.search(r'\b' + re.escape(alias) + r'\b', text_lower):
-                     matches.add(real_name.lower())
+            # 2. Alias Scan (one-pass regex)
+            if self.alias_regex:
+                for match in self.alias_regex.finditer(text_lower):
+                    alias_lower = match.group(0).lower()
+                    real_name = self.aliases.get(alias_lower)
+                    if real_name:
+                        matches.add(real_name.lower())
 
             # Register matches
             weight = section_weights.get(section_name, 0.5)
