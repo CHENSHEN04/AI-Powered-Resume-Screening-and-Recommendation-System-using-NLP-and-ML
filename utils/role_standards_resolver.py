@@ -114,6 +114,16 @@ def load_all_known_skills() -> Set[str]:
 # Globally cache the dynamic expanded vocabulary
 DYNAMIC_COMMON_SKILLS = load_all_known_skills()
 
+# Precompile a union regex for dynamic common skills (sorted by length descending)
+_sorted_dynamic_skills = sorted(list(DYNAMIC_COMMON_SKILLS), key=len, reverse=True)
+if _sorted_dynamic_skills:
+    DYNAMIC_COMMON_SKILLS_REGEX = re.compile(
+        r"(?<![a-z0-9])(" + "|".join(re.escape(s) for s in _sorted_dynamic_skills) + r")(?![a-z0-9])",
+        re.IGNORECASE
+    )
+else:
+    DYNAMIC_COMMON_SKILLS_REGEX = None
+
 
 def normalize_role_slug(role_title: str) -> str:
     """Convert a role title into a stable lowercase slug."""
@@ -258,9 +268,10 @@ def extract_skill_candidates(text: str) -> List[str]:
     found: List[str] = []
     text_lower = text.lower()
 
-    for skill in sorted(DYNAMIC_COMMON_SKILLS, key=len, reverse=True):
-        if not _is_noise(skill):
-            if re.search(r"(?<![a-z0-9])" + re.escape(skill) + r"(?![a-z0-9])", text_lower):
+    if DYNAMIC_COMMON_SKILLS_REGEX:
+        for match in DYNAMIC_COMMON_SKILLS_REGEX.finditer(text_lower):
+            skill = match.group(0).lower()
+            if not _is_noise(skill):
                 found.append(_canonical_skill(skill))
 
     # Match true acronyms (all uppercase) to avoid false positives like "Duties" or "Apply"
