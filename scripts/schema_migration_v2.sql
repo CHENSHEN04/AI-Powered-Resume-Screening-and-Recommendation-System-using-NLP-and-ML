@@ -50,6 +50,19 @@ CREATE TABLE IF NOT EXISTS learning_resources (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 4.5. Fix redirected foreign key constraints from pre-flight renaming
+-- When 'skills' was renamed to 'resume_skills', Postgres automatically redirected
+-- existing foreign keys on 'market_standards' and 'learning_resources' to point to 'resume_skills'.
+-- We must point them back to the new master 'skills' table.
+DELETE FROM market_standards WHERE skill_id NOT IN (SELECT id FROM skills);
+DELETE FROM learning_resources WHERE skill_id NOT IN (SELECT id FROM skills);
+
+ALTER TABLE market_standards DROP CONSTRAINT IF EXISTS market_standards_skill_id_fkey;
+ALTER TABLE market_standards ADD CONSTRAINT market_standards_skill_id_fkey FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE;
+
+ALTER TABLE learning_resources DROP CONSTRAINT IF EXISTS learning_resources_skill_id_fkey;
+ALTER TABLE learning_resources ADD CONSTRAINT learning_resources_skill_id_fkey FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE;
+
 -- Enable RLS (Row Level Security) - Optional but good practice
 ALTER TABLE job_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE skills ENABLE ROW LEVEL SECURITY;

@@ -883,6 +883,29 @@ Return ONLY a valid JSON object with the following keys and structure:
 
 Ensure the skills are formatted as standard technological keywords or industry terms. Return ONLY valid JSON, no markdown blocks, no extra text."""
 
+_ROLE_GEN_FROM_JD_PROMPT = """You are an expert technical recruiter and systems analyst.
+Analyze the following Job Description (JD) for the role "{role_title}":
+JD Text:
+\"\"\"{jd_text}\"\"\"
+
+Based on this JD, extract and organize the skills, qualifications, and requirements into:
+- "description": "a concise 2-3 sentence overview of this role's primary responsibilities based on the JD"
+- "required_skills": ["List of 6-8 core technical/hard skills absolutely required for this role as specified in the JD"]
+- "recommended_skills": ["List of 4-6 supplementary, preferred, or supportive skills from the JD"]
+- "nice_to_have_skills": ["List of 3-5 soft skills or bonus/optional skills mentioned in the JD"]
+- "salary_ranges": {
+    "US": "$Min - $Max (e.g. $80,000 - $130,000)",
+    "UK": "£Min - £Max (e.g. £45,000 - £75,000)",
+    "India": "₹Min - ₹Max (e.g. ₹6,00,000 - ₹15,00,000)",
+    "Singapore": "S$Min - S$Max (e.g. S$60,000 - S$110,000)",
+    "Malaysia": "RM3,000 - RM5,500/mo (Fresh Grad) | RM1,000 - RM2,000/mo (Intern)",
+    "default": "$Min - $Max (e.g. $70,000 - $110,000)"
+  }
+
+Ensure all listed skills are standard technological keywords or industry terms, NOT long sentences or noisy/generic phrases (like "excellent communication", "team player", "minimum 5 years experience", "coordinate with managers", "work hard"). Extract only clean, canonical skill names.
+
+Return ONLY a valid JSON object matching the requested structure. No markdown backticks, no extra text."""
+
 _ROLE_SCHEMA = {
     "type": "object",
     "properties": {
@@ -919,6 +942,31 @@ class AIRoleStandardGenerator:
         # Rule-based fallback if AI is offline
         return {
             "description": f"Standard industry responsibilities and skills for a {role_title}.",
+            "required_skills": ["Communication", "Problem Solving", "Technical Aptitude"],
+            "recommended_skills": ["Project Management", "Team Collaboration"],
+            "nice_to_have_skills": ["Adaptability", "Continuous Learning"],
+            "salary_ranges": {
+                "US": "$70,000 - $110,000",
+                "UK": "£45,000 - £75,000",
+                "India": "₹6,00,000 - ₹15,00,000",
+                "Singapore": "S$60,000 - S$110,000",
+                "Malaysia": "RM3,000 - RM5,500/mo (Fresh Grad) | RM1,000 - RM2,000/mo (Intern)",
+                "default": "$65,000 - $100,000"
+            }
+        }
+
+    def generate_standards_from_jd(self, role_title: str, jd_text: str) -> Dict:
+        prompt = _ROLE_GEN_FROM_JD_PROMPT.format(role_title=role_title, jd_text=jd_text)
+        raw = _call_ai(prompt, max_tokens=2048, response_json=True, response_schema=_ROLE_SCHEMA)
+        if raw:
+            try:
+                parsed = _parse_json_object(raw)
+                return parsed
+            except Exception as e:
+                logger.warning(f"AI JSON parse failed for role standards from JD: {e}")
+        # Rule-based fallback if AI is offline
+        return {
+            "description": f"Standard responsibilities and skills for a {role_title} derived from JD.",
             "required_skills": ["Communication", "Problem Solving", "Technical Aptitude"],
             "recommended_skills": ["Project Management", "Team Collaboration"],
             "nice_to_have_skills": ["Adaptability", "Continuous Learning"],

@@ -175,7 +175,11 @@ def resolve_role_standards(
         try:
             from utils.ai_assistant import AIRoleStandardGenerator
 
-            generated = AIRoleStandardGenerator().generate_standards(title)
+            if jd_text and jd_text.strip():
+                generated = AIRoleStandardGenerator().generate_standards_from_jd(title, jd_text)
+            else:
+                generated = AIRoleStandardGenerator().generate_standards(title)
+
             standards = normalize_standards(generated, title, "ai")
             if is_standards_usable(standards):
                 # Generate learning resources for required/recommended skills
