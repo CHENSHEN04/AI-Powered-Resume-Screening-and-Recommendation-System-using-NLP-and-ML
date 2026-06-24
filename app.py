@@ -201,6 +201,7 @@ def render_sidebar():
                 disabled = (key != "upload" and not has_analysis)
                 if st.button(label, key=f"nav_{key}", use_container_width=True, disabled=disabled):
                     st.session_state["app_stage"] = key
+                    st.session_state["scroll_to_top"] = True
                     st.rerun()
 
         if st.session_state["app_stage"] != "upload":
@@ -210,6 +211,7 @@ def render_sidebar():
                     st.session_state[k] = DEFAULTS[k]
                 st.session_state["user"] = user
                 st.session_state["is_anonymous"] = is_anon
+                st.session_state["scroll_to_top"] = True
                 st.rerun()
 
     return db
@@ -235,10 +237,10 @@ def render_upload_stage():
     for col, (icon, title, desc) in zip(cols, features):
         with col:
             st.markdown(f"""
-            <div class="metric-card animate-in animate-in-delay-1">
-                <div style="font-size:2rem">{icon}</div>
-                <div class="metric-label" style="font-weight:600;font-size:1rem;color:#FAFAFA">{title}</div>
-                <div class="metric-label">{desc}</div>
+            <div class="metric-card animate-in animate-in-delay-1" style="padding: 1rem 0.75rem; border-radius: 12px; min-height: 110px;">
+                <div style="font-size: 1.5rem; margin-bottom: 0.25rem;">{icon}</div>
+                <div style="font-weight: 600; font-size: 0.9rem; color: #FAFAFA; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.25rem;">{title}</div>
+                <div style="font-size: 0.75rem; color: #A1A1AA; margin-top: 0.25rem; line-height: 1.3;">{desc}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -2178,6 +2180,7 @@ def render_welcome_stage():
                         st.session_state["user"] = res.user
                         st.session_state["is_anonymous"] = False
                         st.session_state["show_login_welcome"] = True
+                        st.session_state["scroll_to_top"] = True
                         _sync_session_analysis_to_db(db, res.user.id)
                         st.rerun()
 
@@ -2223,6 +2226,7 @@ def render_welcome_stage():
                         self.email = "guest@local"
                 st.session_state["user"] = GuestUser()
                 st.session_state["is_anonymous"] = True
+                st.session_state["scroll_to_top"] = True
                 st.toast("Entered Guest Mode! 👻", icon="👻")
                 st.rerun()
 
@@ -2279,6 +2283,15 @@ def main():
     if not user:
         render_welcome_stage()
         return
+
+    # Force scroll to top if requested
+    if st.session_state.get("scroll_to_top"):
+        st.markdown("""
+        <script>
+            window.parent.document.querySelector('section.main').scrollTo(0, 0);
+        </script>
+        """, unsafe_allow_html=True)
+        st.session_state["scroll_to_top"] = False
 
     if st.session_state.get("show_login_welcome"):
         st.session_state["show_login_welcome"] = False
