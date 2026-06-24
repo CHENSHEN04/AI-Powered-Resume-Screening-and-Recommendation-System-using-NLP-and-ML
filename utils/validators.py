@@ -7,7 +7,15 @@ Implements security checks and file validation as specified in
 OUTPUT_SPECIFICATION.md sections 5.5 and 6.1.3.
 """
 
-import magic
+try:
+    import magic
+    # Verify that the C library backing magic is installed and usable
+    magic.from_buffer(b"%PDF-1.5", mime=True)
+    HAS_MAGIC = True
+except Exception:
+    magic = None
+    HAS_MAGIC = False
+
 from pathlib import Path
 from typing import Tuple
 from utils.errors import ErrorCode, AppError, get_error
@@ -30,6 +38,23 @@ MAX_FILE_SIZE_ANONYMOUS = 5 * 1024 * 1024  # 5 MB
 MAX_FILE_SIZE_AUTHENTICATED = 10 * 1024 * 1024  # 10 MB
 
 
+def _validate_signature_bytes(file_bytes: bytes, ext: str) -> bool:
+    """
+    Validate file content matches its extension using file signature bytes.
+    
+    Prevents extension spoofing without relying on external system libraries.
+    """
+    if not file_bytes:
+        return False
+    if ext == ".pdf":
+        # PDF files must start with %PDF
+        return file_bytes.startswith(b"%PDF")
+    elif ext == ".docx":
+        # DOCX files are ZIP archives and must start with PK\x03\x04
+        return file_bytes.startswith(b"PK\x03\x04")
+    return False
+
+
 # ==============================================================================
 # Validation Functions
 # ==============================================================================
@@ -40,13 +65,13 @@ def validate_file(
     is_authenticated: bool = False
 ) -> Tuple[bool, AppError | None]:
     """
-    Validate uploaded file for security and format.
+    Validate uploaded file size, type, and contents.
     
     Args:
-        file_bytes: File content as bytes
-        filename: Original filename
-        is_authenticated: Whether user is authenticated (affects size limit)
-    
+        file_bytes: Uploaded file content as bytes
+        filename: Name of the uploaded file
+        is_authenticated: Whether the user is logged in
+        
     Returns:
         Tuple of (is_valid, error)
         - If valid: (True, None)
@@ -71,13 +96,19 @@ def validate_file(
         return False, error
     
     # Verify MIME type matches extension
-    try:
-        detected_mime = magic.from_buffer(file_bytes[:2048], mime=True)
-        if detected_mime not in ALLOWED_MIME_TYPES:
+    if HAS_MAGIC and magic is not None:
+        try:
+            detected_mime = magic.from_buffer(file_bytes[:2048], mime=True)
+            if detected_mime not in ALLOWED_MIME_TYPES:
+                return False, get_error(ErrorCode.INVALID_FILE_TYPE)
+        except Exception:
+            # Fallback to signature bytes validation if magic call fails
+            if not _validate_signature_bytes(file_bytes, ext):
+                return False, get_error(ErrorCode.INVALID_FILE_TYPE)
+    else:
+        # Fallback to signature bytes validation if magic library is not available
+        if not _validate_signature_bytes(file_bytes, ext):
             return False, get_error(ErrorCode.INVALID_FILE_TYPE)
-    except Exception as e:
-        # If magic fails, we'll allow it and let the parser handle it
-        pass
     
     # Check filename length
     if len(filename) > MAX_FILENAME_LENGTH:
