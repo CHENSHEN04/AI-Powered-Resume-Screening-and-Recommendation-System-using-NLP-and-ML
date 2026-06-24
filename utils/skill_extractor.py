@@ -28,6 +28,11 @@ SPACY_MODEL_NAME = "en_core_web_sm"
 # Skill Extractor Class
 # ==============================================================================
 
+# Module-level caches to avoid repeating Supabase queries and heavy regex compiles on every instantiation
+_skills_cache = None
+_db_regex_cache = None
+_alias_regex_cache = None
+
 class SkillExtractor:
     """
     Extracts skills from resume text using hybrid NER and keyword matching.
@@ -37,22 +42,32 @@ class SkillExtractor:
         """Initialize the extractor by loading resources."""
         self.nlp = self._load_spacy_model()
         self.standards = self._load_market_standards()
-        self.skill_db = self._build_skill_db()
         self.aliases = self.standards.get("skill_aliases", {})
         
-        # Pre-compile the union database skills regex (sorted by length descending)
-        sorted_skills = sorted(list(self.skill_db), key=len, reverse=True)
-        if sorted_skills:
-            self.db_regex = re.compile(r'\b(' + '|'.join(re.escape(s) for s in sorted_skills) + r')\b', re.IGNORECASE)
-        else:
-            self.db_regex = None
+        global _skills_cache, _db_regex_cache, _alias_regex_cache
+        
+        if _skills_cache is None:
+            self.skill_db = self._build_skill_db()
+            _skills_cache = self.skill_db
+            
+            # Pre-compile the union database skills regex (sorted by length descending)
+            sorted_skills = sorted(list(self.skill_db), key=len, reverse=True)
+            if sorted_skills:
+                _db_regex_cache = re.compile(r'\b(' + '|'.join(re.escape(s) for s in sorted_skills) + r')\b', re.IGNORECASE)
+            else:
+                _db_regex_cache = None
 
-        # Pre-compile the union alias regex (sorted by length descending)
-        sorted_aliases = sorted(list(self.aliases.keys()), key=len, reverse=True)
-        if sorted_aliases:
-            self.alias_regex = re.compile(r'\b(' + '|'.join(re.escape(a) for a in sorted_aliases) + r')\b', re.IGNORECASE)
+            # Pre-compile the union alias regex (sorted by length descending)
+            sorted_aliases = sorted(list(self.aliases.keys()), key=len, reverse=True)
+            if sorted_aliases:
+                _alias_regex_cache = re.compile(r'\b(' + '|'.join(re.escape(a) for a in sorted_aliases) + r')\b', re.IGNORECASE)
+            else:
+                _alias_regex_cache = None
         else:
-            self.alias_regex = None
+            self.skill_db = _skills_cache
+            
+        self.db_regex = _db_regex_cache
+        self.alias_regex = _alias_regex_cache
         
     @staticmethod
     @st.cache_resource
