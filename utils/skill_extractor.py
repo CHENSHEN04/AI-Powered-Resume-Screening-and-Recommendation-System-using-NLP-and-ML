@@ -26,7 +26,7 @@ SPACY_MODEL_NAME = "en_core_web_sm"
 
 # Path to local extracted model
 LOCAL_MODEL_DIR = Path("models") / "en_core_web_sm_local"
-LOCAL_MODEL_PATH = LOCAL_MODEL_DIR / f"{SPACY_MODEL_NAME}-3.7.0" / SPACY_MODEL_NAME / f"{SPACY_MODEL_NAME}-3.7.0"
+LOCAL_MODEL_PATH = LOCAL_MODEL_DIR / f"{SPACY_MODEL_NAME}-3.8.0" / SPACY_MODEL_NAME / f"{SPACY_MODEL_NAME}-3.8.0"
 
 # ==============================================================================
 # Skill Extractor Class
