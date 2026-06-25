@@ -111,7 +111,12 @@ class DatabaseManager:
                 logging.getLogger(__name__).warning("Supabase URL or Key not found in secrets.")
                 return None
                 
-            return create_client(url, key)
+            from supabase import ClientOptions
+            options = ClientOptions(
+                postgrest_client_timeout=5.0,
+                storage_client_timeout=5.0
+            )
+            return create_client(url, key, options=options)
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Failed to initialize Supabase client: {e}")

@@ -108,8 +108,8 @@ class SkillExtractor:
             
         # Add dynamically resolved common skills and database skills
         try:
-            from utils.role_standards_resolver import load_all_known_skills
-            skills.update(load_all_known_skills())
+            from utils.role_standards_resolver import get_dynamic_common_skills
+            skills.update(get_dynamic_common_skills())
         except Exception:
             pass
 

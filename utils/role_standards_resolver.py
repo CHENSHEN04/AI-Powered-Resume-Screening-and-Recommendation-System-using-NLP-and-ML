@@ -95,34 +95,60 @@ def load_all_known_skills() -> Set[str]:
                                     skills.add(s_clean)
     except Exception:
         pass
-    # Load from Database
+    # Load from Database (with timeout to prevent blocking application/imports)
     try:
-        from utils.db_handler import DatabaseManager
-        db = DatabaseManager()
-        if db.supabase:
-            res = db.supabase.table("skills").select("name").execute()
-            if res.data:
-                for row in res.data:
-                    s_clean = row["name"].lower().strip()
-                    if not _is_noise(s_clean):
-                        skills.add(s_clean)
-    except Exception:
-        pass
+        import concurrent.futures
+        
+        def _fetch_from_db():
+            from utils.db_handler import DatabaseManager
+            db = DatabaseManager()
+            if db.supabase:
+                return db.supabase.table("skills").select("name").execute()
+            return None
+            
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_fetch_from_db)
+            try:
+                res = future.result(timeout=2.0)
+                if res and res.data:
+                    for row in res.data:
+                        s_clean = row["name"].lower().strip()
+                        if not _is_noise(s_clean):
+                            skills.add(s_clean)
+            except concurrent.futures.TimeoutError:
+                import logging
+                logging.getLogger(__name__).warning("Supabase skills vocabulary query/initialization timed out after 2.0s.")
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to load dynamic skills from database: {e}")
     return skills
 
 
-# Globally cache the dynamic expanded vocabulary
-DYNAMIC_COMMON_SKILLS = load_all_known_skills()
+# Globally cache the dynamic expanded vocabulary (lazy-initialized to prevent import-time blocking)
+_DYNAMIC_COMMON_SKILLS = None
+_DYNAMIC_COMMON_SKILLS_REGEX = None
 
-# Precompile a union regex for dynamic common skills (sorted by length descending)
-_sorted_dynamic_skills = sorted(list(DYNAMIC_COMMON_SKILLS), key=len, reverse=True)
-if _sorted_dynamic_skills:
-    DYNAMIC_COMMON_SKILLS_REGEX = re.compile(
-        r"(?<![a-z0-9])(" + "|".join(re.escape(s) for s in _sorted_dynamic_skills) + r")(?![a-z0-9])",
-        re.IGNORECASE
-    )
-else:
-    DYNAMIC_COMMON_SKILLS_REGEX = None
+def get_dynamic_common_skills() -> Set[str]:
+    """Lazy getter for dynamic common skills."""
+    global _DYNAMIC_COMMON_SKILLS
+    if _DYNAMIC_COMMON_SKILLS is None:
+        _DYNAMIC_COMMON_SKILLS = load_all_known_skills()
+    return _DYNAMIC_COMMON_SKILLS
+
+def get_dynamic_common_skills_regex():
+    """Lazy getter for dynamic common skills regex."""
+    global _DYNAMIC_COMMON_SKILLS_REGEX
+    if _DYNAMIC_COMMON_SKILLS_REGEX is None:
+        skills = get_dynamic_common_skills()
+        sorted_skills = sorted(list(skills), key=len, reverse=True)
+        if sorted_skills:
+            _DYNAMIC_COMMON_SKILLS_REGEX = re.compile(
+                r"(?<![a-z0-9])(" + "|".join(re.escape(s) for s in sorted_skills) + r")(?![a-z0-9])",
+                re.IGNORECASE
+            )
+        else:
+            _DYNAMIC_COMMON_SKILLS_REGEX = None
+    return _DYNAMIC_COMMON_SKILLS_REGEX
 
 
 def normalize_role_slug(role_title: str) -> str:
@@ -268,8 +294,9 @@ def extract_skill_candidates(text: str) -> List[str]:
     found: List[str] = []
     text_lower = text.lower()
 
-    if DYNAMIC_COMMON_SKILLS_REGEX:
-        for match in DYNAMIC_COMMON_SKILLS_REGEX.finditer(text_lower):
+    regex = get_dynamic_common_skills_regex()
+    if regex:
+        for match in regex.finditer(text_lower):
             skill = match.group(0).lower()
             if not _is_noise(skill):
                 found.append(_canonical_skill(skill))
@@ -372,7 +399,7 @@ def _clean_candidate(chunk: str) -> Optional[str]:
     lower = chunk.lower()
     if _is_noise(lower):
         return None
-    if lower in DYNAMIC_COMMON_SKILLS:
+    if lower in get_dynamic_common_skills():
         return _canonical_skill(lower)
         
     # Filter out chunks starting with common verbs or function words if not in DYNAMIC_COMMON_SKILLS
