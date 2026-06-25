@@ -71,8 +71,8 @@ datasets>=2.14.0
 # ------------------------------------------------------------------------------
 httpx>=0.24.0
 transformers>=4.30.0
-torch==2.2.0+cpu; sys_platform == "linux"
-torch>=2.2.0; sys_platform != "linux"
+torch==2.5.1+cpu; sys_platform == "linux"
+torch>=2.5.1; sys_platform != "linux"
 accelerate>=0.20.0 # for efficient model loading
 
 # ------------------------------------------------------------------------------
