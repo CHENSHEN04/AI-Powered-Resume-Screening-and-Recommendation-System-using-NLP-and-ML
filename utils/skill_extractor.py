@@ -24,6 +24,16 @@ from utils.errors import ErrorCode, AppError, get_error, log_error
 MARKET_STANDARDS_PATH = Path("data/market_standards.json")
 SPACY_MODEL_NAME = "en_core_web_sm"
 
+# Pre-load/download the model at module load time (so it downloads during app startup, not during user inference)
+try:
+    spacy.load(SPACY_MODEL_NAME)
+except OSError:
+    try:
+        from spacy.cli import download
+        download(SPACY_MODEL_NAME)
+    except Exception:
+        pass
+
 # ==============================================================================
 # Skill Extractor Class
 # ==============================================================================

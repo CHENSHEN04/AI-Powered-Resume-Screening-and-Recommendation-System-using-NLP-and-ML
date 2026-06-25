@@ -21,6 +21,7 @@ from pathlib import Path
 from utils.validators import validate_file
 from utils.ui_components import show_error, show_warning
 from utils.db_handler import DatabaseManager
+from utils.skill_extractor import SkillExtractor
 from utils.rate_limiter import RateLimiter, show_rate_limit_info
 try:
     from utils.ai_assistant import AIAssistant, AIFeedbackGenerator, AIRoleStandardGenerator
@@ -548,7 +549,6 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = "", 
 
     # 2. Extract Skills
     progress.progress(25, text="🧠 Extracting skills...")
-    from utils.skill_extractor import SkillExtractor
     extractor = SkillExtractor()
     skill_data = extractor.extract_skills(resume_text)
     if jd_text:
