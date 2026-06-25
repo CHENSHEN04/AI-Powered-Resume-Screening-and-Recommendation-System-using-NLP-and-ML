@@ -23,7 +23,7 @@ python-magic-bin>=0.4.14; sys_platform == "win32"
 # NLP & Machine Learning
 # ------------------------------------------------------------------------------
 spacy>=3.7.0
-en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.0/en_core_web_sm-3.7.0.tar.gz
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.0/en_core_web_sm-3.7.0.tar.gz
 sentence-transformers>=2.2.0
 scikit-learn>=1.3.0
 joblib>=1.3.0
