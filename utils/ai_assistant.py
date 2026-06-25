@@ -246,7 +246,7 @@ def _call_http_with_retry(req, retries=3, backoff_factor=2, retry_429=True):
     """Make an HTTP request with exponential backoff on 429 and 5xx errors."""
     for attempt in range(retries):
         try:
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, timeout=10.0) as response:
                 return response.read().decode("utf-8")
         except urllib.error.HTTPError as he:
             # If 429 rate limit is hit and retry_429 is False, raise immediately so we can rotate keys
