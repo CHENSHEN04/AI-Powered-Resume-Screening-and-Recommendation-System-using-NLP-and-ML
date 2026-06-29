@@ -1326,12 +1326,13 @@ class AIVisualEvaluator:
             jd_words = set()
             noise_words = {
                 "the", "and", "our", "you", "your", "for", "with", "from", "that", "this",
-                "with", "will", "shall", "about", "into", "over", "after", "kuala", "lumpur",
+                "will", "shall", "about", "into", "over", "after", "kuala", "lumpur",
                 "malaysia", "singapore", "required", "skills", "role", "job", "description",
                 "resume", "experience", "candidate", "ability", "years", "knowledge", "working",
                 "must", "have", "preferred", "degree", "field", "strong", "excellent", "written",
                 "verbal", "communication", "skills", "good", "team", "oriented", "high", "level",
-                "successful", "candidates", "looking", "join"
+                "successful", "candidates", "looking", "join", "able", "address", "advanced",
+                "analyses"
             }
             words = re.findall(r"\b[a-zA-Z\+\#]{3,15}\b", jd_text.lower())
             for w in words:

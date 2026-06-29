@@ -35,7 +35,7 @@ COMMON_SKILLS = {
     "jira", "agile", "scrum", "sap", "quickbooks", "financial reporting",
     "tax preparation", "auditing", "legal research", "contract law",
     "chinese", "mandarin", "cantonese", "english", "malay", "tamil", 
-    "spanish", "french", "german", "japanese", "korean",
+    "spanish", "french", "german", "japanese", "korean", "r", "c",
 }
 
 REQUIRED_HINTS = (
@@ -64,13 +64,19 @@ def _is_noise(value: str) -> bool:
         "kuala", "lumpur", "malaysia", "singapore", "kuala lumpur", "role summary",
         "essential requirements", "apbs", "data management internship", "diabetes",
         "identify", "where necessary", "experience with", "responsible for", "able to",
+        "able", "advanced", "analyses",
         "meeting minutes", "including import", "assist in", "business", "assist", "speaking",
         "intern", "internship", "key", "key responsibilities", "provide", "support",
         "action", "champion", "enabler", "ensure", "enter", "steward", "timely",
         "verification", "review", "approve", "monitor", "service", "quality", "integrity",
         "common", "general", "basic", "must", "nice to have", "competency", "employee",
-        "staff", "ability", "ability to", "psa"
+        "staff", "ability", "ability to", "psa",
+        # Structural noise headers and common phrases
+        "job description", "roles and responsibilities", "skills required", "about the role",
+        "role description", "minimum qualifications", "preferred qualifications", "basic qualifications"
     }
+    if lower in {"r", "c"}:
+        return False
     return lower in noise or len(lower) < 2
 
 
