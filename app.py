@@ -235,6 +235,11 @@ def _render_model_performance_ui(metrics_data):
     clf = metrics_data.get("classifier", {})
     sem = metrics_data.get("semantic_matching", {})
     
+    total = ds.get('total_records', 1)
+    train_pct = (ds.get('train_records', 0) / total) * 100
+    val_pct = (ds.get('val_records', 0) / total) * 100
+    test_pct = (ds.get('test_records', 0) / total) * 100
+    
     st.markdown(f"""
     <div style="background: rgba(255,255,255,0.01); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem;">
         <h4 style="margin-top:0; color:#8F8AFF;">📊 Model Training & Evaluation Dataset</h4>
@@ -247,15 +252,15 @@ def _render_model_performance_ui(metrics_data):
                 <span style="font-size:1.15rem; font-weight:bold; color:#FAFAFA;">{ds.get('total_records', 0):,}</span>
             </div>
             <div style="background:rgba(255,255,255,0.02); padding:0.6rem 1rem; border-radius:8px; border:1px solid rgba(255,255,255,0.05); min-width:120px; text-align:center;">
-                <span style="color:#A1A1AA; font-size:0.8rem; display:block;">Training (80%)</span>
+                <span style="color:#A1A1AA; font-size:0.8rem; display:block;">Training ({train_pct:.0f}%)</span>
                 <span style="font-size:1.15rem; font-weight:bold; color:#43E97B;">{ds.get('train_records', 0):,}</span>
             </div>
             <div style="background:rgba(255,255,255,0.02); padding:0.6rem 1rem; border-radius:8px; border:1px solid rgba(255,255,255,0.05); min-width:120px; text-align:center;">
-                <span style="color:#A1A1AA; font-size:0.8rem; display:block;">Validation (10%)</span>
+                <span style="color:#A1A1AA; font-size:0.8rem; display:block;">Validation ({val_pct:.0f}%)</span>
                 <span style="font-size:1.15rem; font-weight:bold; color:#ffa421;">{ds.get('val_records', 0):,}</span>
             </div>
             <div style="background:rgba(255,255,255,0.02); padding:0.6rem 1rem; border-radius:8px; border:1px solid rgba(255,255,255,0.05); min-width:120px; text-align:center;">
-                <span style="color:#A1A1AA; font-size:0.8rem; display:block;">Test Split (10%)</span>
+                <span style="color:#A1A1AA; font-size:0.8rem; display:block;">Test Split ({test_pct:.0f}%)</span>
                 <span style="font-size:1.15rem; font-weight:bold; color:#FF6584;">{ds.get('test_records', 0):,}</span>
             </div>
         </div>

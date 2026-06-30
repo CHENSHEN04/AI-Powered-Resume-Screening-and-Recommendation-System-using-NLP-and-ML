@@ -300,7 +300,11 @@ export default function Dashboard() {
                                     <span className="font-semibold">{metrics.dataset?.total_records.toLocaleString()}</span> total records ({metrics.dataset?.num_classes} classes)
                                 </div>
                                 <div className="text-xs text-muted-foreground mt-0.5">
-                                    80% Train | 10% Val | 10% Test splits
+                                    {metrics.dataset ? (
+                                        `${Math.round((metrics.dataset.train_records / metrics.dataset.total_records) * 100)}% Train | ${Math.round((metrics.dataset.val_records / metrics.dataset.total_records) * 100)}% Val | ${Math.round((metrics.dataset.test_records / metrics.dataset.total_records) * 100)}% Test splits`
+                                    ) : (
+                                        "70% Train | 15% Val | 15% Test splits"
+                                    )}
                                 </div>
                             </div>
                             <div className="p-4 bg-muted/30 rounded-xl border border-muted">
