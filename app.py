@@ -218,6 +218,167 @@ def render_sidebar():
     return db
 
 
+def _load_model_metrics():
+    import json
+    try:
+        with open("data/model_metrics.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def _render_model_performance_ui(metrics_data):
+    if not metrics_data:
+        st.warning("⚠️ Model performance metrics could not be loaded.")
+        return
+        
+    ds = metrics_data.get("dataset", {})
+    clf = metrics_data.get("classifier", {})
+    sem = metrics_data.get("semantic_matching", {})
+    
+    st.markdown(f"""
+    <div style="background: rgba(255,255,255,0.01); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem;">
+        <h4 style="margin-top:0; color:#8F8AFF;">📊 Model Training & Evaluation Dataset</h4>
+        <p style="color:#A1A1AA; font-size:0.95rem; line-height:1.5;">
+            The classification and semantic matching systems are evaluated using the gold-standard <b>{ds.get('name')}</b> dataset ({ds.get('source')}).
+        </p>
+        <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-top:1rem;">
+            <div style="background:rgba(255,255,255,0.02); padding:0.6rem 1rem; border-radius:8px; border:1px solid rgba(255,255,255,0.05); min-width:120px; text-align:center;">
+                <span style="color:#A1A1AA; font-size:0.8rem; display:block;">Total Resumes</span>
+                <span style="font-size:1.15rem; font-weight:bold; color:#FAFAFA;">{ds.get('total_records', 0):,}</span>
+            </div>
+            <div style="background:rgba(255,255,255,0.02); padding:0.6rem 1rem; border-radius:8px; border:1px solid rgba(255,255,255,0.05); min-width:120px; text-align:center;">
+                <span style="color:#A1A1AA; font-size:0.8rem; display:block;">Training (80%)</span>
+                <span style="font-size:1.15rem; font-weight:bold; color:#43E97B;">{ds.get('train_records', 0):,}</span>
+            </div>
+            <div style="background:rgba(255,255,255,0.02); padding:0.6rem 1rem; border-radius:8px; border:1px solid rgba(255,255,255,0.05); min-width:120px; text-align:center;">
+                <span style="color:#A1A1AA; font-size:0.8rem; display:block;">Validation (10%)</span>
+                <span style="font-size:1.15rem; font-weight:bold; color:#ffa421;">{ds.get('val_records', 0):,}</span>
+            </div>
+            <div style="background:rgba(255,255,255,0.02); padding:0.6rem 1rem; border-radius:8px; border:1px solid rgba(255,255,255,0.05); min-width:120px; text-align:center;">
+                <span style="color:#A1A1AA; font-size:0.8rem; display:block;">Test Split (10%)</span>
+                <span style="font-size:1.15rem; font-weight:bold; color:#FF6584;">{ds.get('test_records', 0):,}</span>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 💼 Broad Role Classifier Performance")
+        st.markdown(f"**Model:** `{clf.get('model_name')}`")
+        st.markdown(f"**Vectorizer:** `{clf.get('vectorizer')}`")
+        
+        c_acc1, c_acc2, c_acc3 = st.columns(3)
+        c_acc1.metric("Accuracy", f"{clf.get('accuracy', 0.0)*100:.2f}%")
+        c_acc2.metric("Macro F1", f"{clf.get('macro_f1', 0.0)*100:.2f}%")
+        c_acc3.metric("Latency", f"{clf.get('latency_ms', 0.0):.2f} ms")
+        
+        st.caption("The SVM classifier performs broad-category classification to identify the candidate's core professional industry with extremely low latency.")
+        
+        with st.expander("🔍 View Per-Class Classification Report"):
+            report_data = []
+            for cat, scores in clf.get("report", {}).items():
+                report_data.append({
+                    "Category": cat,
+                    "Precision": f"{scores.get('precision', 0.0)*100:.1f}%",
+                    "Recall": f"{scores.get('recall', 0.0)*100:.1f}%",
+                    "F1-Score": f"{scores.get('f1-score', 0.0)*100:.1f}%",
+                    "Support": scores.get("support", 0)
+                })
+            df_report = pd.DataFrame(report_data)
+            st.dataframe(df_report, use_container_width=True, hide_index=True)
+            
+    with col2:
+        st.markdown("### 🧠 Semantic Matching (Ranking) Comparison")
+        st.markdown("**Sentence similarity on category standard descriptions:**")
+        
+        minilm = sem.get("minilm", {})
+        bert = sem.get("bert", {})
+        
+        st.markdown("#### Ranking Accuracy Comparison")
+        comp_table = pd.DataFrame([
+            {
+                "Metric": "Mean Reciprocal Rank (MRR)",
+                "all-MiniLM-L6-v2": f"{minilm.get('mrr', 0.0):.4f}",
+                "bert-base-uncased": f"{bert.get('mrr', 0.0):.4f}"
+            },
+            {
+                "Metric": "Avg Rank of Correct Category",
+                "all-MiniLM-L6-v2": f"{minilm.get('avg_rank', 0.0):.2f} / 20",
+                "bert-base-uncased": f"{bert.get('avg_rank', 0.0):.2f} / 20"
+            },
+            {
+                "Metric": "Top-1 Match Accuracy",
+                "all-MiniLM-L6-v2": f"{minilm.get('top1_acc', 0.0)*100:.1f}%",
+                "bert-base-uncased": f"{bert.get('top1_acc', 0.0)*100:.1f}%"
+            },
+            {
+                "Metric": "Top-3 Match Accuracy",
+                "all-MiniLM-L6-v2": f"{minilm.get('top3_acc', 0.0)*100:.1f}%",
+                "bert-base-uncased": f"{bert.get('top3_acc', 0.0)*100:.1f}%"
+            },
+            {
+                "Metric": "Top-5 Match Accuracy",
+                "all-MiniLM-L6-v2": f"{minilm.get('top5_acc', 0.0)*100:.1f}%",
+                "bert-base-uncased": f"{bert.get('top5_acc', 0.0)*100:.1f}%"
+            }
+        ])
+        st.dataframe(comp_table, use_container_width=True, hide_index=True)
+
+        # RENDER COMPARISON CHARTS
+        try:
+            import plotly.graph_objects as go
+            
+            # 1. Accuracy metrics chart
+            categories = ['MRR', 'Top-1 Acc', 'Top-3 Acc', 'Top-5 Acc']
+            minilm_vals = [minilm.get('mrr', 0.0) * 100, minilm.get('top1_acc', 0.0) * 100, minilm.get('top3_acc', 0.0) * 100, minilm.get('top5_acc', 0.0) * 100]
+            bert_vals = [bert.get('mrr', 0.0) * 100, bert.get('top1_acc', 0.0) * 100, bert.get('top3_acc', 0.0) * 100, bert.get('top5_acc', 0.0) * 100]
+            
+            fig_acc = go.Figure(data=[
+                go.Bar(name='all-MiniLM-L6-v2 (Production)', x=categories, y=minilm_vals, marker_color='#43E97B'),
+                go.Bar(name='bert-base-uncased (Research)', x=categories, y=bert_vals, marker_color='#FF6584')
+            ])
+            fig_acc.update_layout(
+                barmode='group',
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='#FAFAFA'),
+                legend=dict(font=dict(color='#FAFAFA'), orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin=dict(l=20, r=20, t=30, b=20),
+                height=240
+            )
+            fig_acc.update_yaxes(showgrid=True, gridcolor='rgba(255,255,255,0.06)', range=[0, 105])
+            fig_acc.update_xaxes(showgrid=False)
+            st.plotly_chart(fig_acc, use_container_width=True, config={"displayModeBar": False})
+            
+            # 2. Latency comparison chart
+            fig_lat = go.Figure(data=[
+                go.Bar(
+                    y=['bert-base-uncased', 'all-MiniLM-L6-v2'],
+                    x=[bert.get('latency_ms', 0.0), minilm.get('latency_ms', 0.0)],
+                    orientation='h',
+                    marker_color=['#FF6584', '#43E97B'],
+                    width=0.4,
+                    text=[f"{bert.get('latency_ms', 0.0):.1f} ms", f"{minilm.get('latency_ms', 0.0):.1f} ms"],
+                    textposition='auto'
+                )
+            ])
+            fig_lat.update_layout(
+                title=dict(text="Inference Latency Comparison (ms) - Lower is Better", font=dict(size=12, color='#FAFAFA')),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='#FAFAFA'),
+                margin=dict(l=110, r=20, t=35, b=20),
+                height=160
+            )
+            fig_lat.update_xaxes(showgrid=True, gridcolor='rgba(255,255,255,0.06)')
+            fig_lat.update_yaxes(showgrid=False)
+            st.plotly_chart(fig_lat, use_container_width=True, config={"displayModeBar": False})
+        except Exception as e:
+            logger.warning(f"Plotly generation failed: {e}")
+
+
 # ==============================================================================
 # Stage 1: Upload (Hero + File Uploader + JD Input)
 # ==============================================================================
@@ -313,6 +474,11 @@ def render_upload_stage():
             st.session_state["file_bytes"] = file_bytes
             st.session_state["uploaded_file_name"] = uploaded_file.name
             show_role_selector_dialog(file_bytes, uploaded_file.name, jd_text.strip())
+
+    st.markdown("---")
+    with st.expander("📊 About the AI Models & Training Performance"):
+        metrics = _load_model_metrics()
+        _render_model_performance_ui(metrics)
 
 
 @st.dialog("✨ Welcome to Deep Career Coach!", width="large")
@@ -1437,8 +1603,8 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
     st.markdown("---")
 
     # ── Tabs ──
-    tab_labels = ["✅ Your Skills", "❌ Skill Gaps", "🤖 AI Feedback", "🎨 Visual Polish", "🎓 Learning Plan", "💬 AI Coach"]
-    tab_skills, tab_gaps, tab_feedback, tab_visual, tab_plan, tab_ai = st.tabs(tab_labels)
+    tab_labels = ["✅ Your Skills", "❌ Skill Gaps", "🤖 AI Feedback", "🎨 Visual Polish", "🎓 Learning Plan", "💬 AI Coach", "📊 Model Performance"]
+    tab_skills, tab_gaps, tab_feedback, tab_visual, tab_plan, tab_ai, tab_metrics = st.tabs(tab_labels)
 
     with tab_skills:
         if skill_data["all_skills"]:
@@ -2010,6 +2176,11 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
                         response = st.session_state["ai_agent"].generate_response(prompt, user_id)
                         st.write(response)
                 st.session_state["chat_history"].append({"role": "assistant", "content": response})
+
+    with tab_metrics:
+        st.markdown("## 📊 System Model Performance Comparison")
+        metrics = _load_model_metrics()
+        _render_model_performance_ui(metrics)
 
     st.markdown("---")
 
