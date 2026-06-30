@@ -87,13 +87,13 @@ def train_pipeline():
     joblib.dump(le, MODELS_DIR / "encoder.joblib")
     print(f"Saved LabelEncoder. Classes: {len(le.classes_)}")
 
-    # 4. Data Splitting (80% Train, 10% Val, 10% Test)
-    print("Splitting dataset (80/10/10 Train/Val/Test)...")
-    # First split 80% train and 20% temp
+    # 4. Data Splitting (70% Train, 15% Val, 15% Test)
+    print("Splitting dataset (70/15/15 Train/Val/Test)...")
+    # First split 70% train and 30% temp
     df_train, df_temp = train_test_split(
-        df, test_size=0.2, random_state=42, stratify=df['encoded_category']
+        df, test_size=0.3, random_state=42, stratify=df['encoded_category']
     )
-    # Split temp split 50/50 to get 10% validation and 10% test
+    # Split temp split 50/50 to get 15% validation and 15% test
     df_val, df_test = train_test_split(
         df_temp, test_size=0.5, random_state=42, stratify=df_temp['encoded_category']
     )

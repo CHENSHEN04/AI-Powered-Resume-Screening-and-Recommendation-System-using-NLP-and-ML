@@ -378,6 +378,58 @@ def _render_model_performance_ui(metrics_data):
         except Exception as e:
             logger.warning(f"Plotly generation failed: {e}")
 
+    # ── Split Experiments Section ──
+    splits_data = metrics_data.get("split_experiments", [])
+    if splits_data:
+        st.markdown("---")
+        st.markdown("### 📈 Data Splitting Experiments Comparison")
+        st.markdown(
+            "We evaluated the classifier performance across four different data-splitting strategies (stratified by category) to find the optimal ratio between training data density and testing resolution."
+        )
+        
+        # Display split metrics table
+        split_rows = []
+        for s in splits_data:
+            split_rows.append({
+                "Split Name": s["split_name"],
+                "Train Resumes": s["train_count"],
+                "Val Resumes": s["val_count"],
+                "Test Resumes": s["test_count"],
+                "Val Accuracy": f"{s['val_accuracy']*100:.2f}%",
+                "Test Accuracy": f"{s['test_accuracy']*100:.2f}%",
+                "Macro F1-Score": f"{s['macro_f1']*100:.2f}%",
+                "Training Time": f"{s['training_time_seconds']:.2f}s"
+            })
+        st.dataframe(pd.DataFrame(split_rows), use_container_width=True, hide_index=True)
+        
+        # Plotly chart comparing Test Accuracy and F1-Score across splits
+        try:
+            import plotly.graph_objects as go
+            
+            names = [s["split_name"] for s in splits_data]
+            accuracies = [s["test_accuracy"] * 100 for s in splits_data]
+            f1s = [s["macro_f1"] * 100 for s in splits_data]
+            
+            fig_splits = go.Figure(data=[
+                go.Bar(name='Test Accuracy (%)', x=names, y=accuracies, marker_color='#6C63FF'),
+                go.Bar(name='Macro F1-Score (%)', x=names, y=f1s, marker_color='#43E97B')
+            ])
+            fig_splits.update_layout(
+                title="Performance Comparison by Split Ratios (%)",
+                barmode='group',
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='#FAFAFA'),
+                legend=dict(font=dict(color='#FAFAFA'), orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin=dict(l=20, r=20, t=40, b=20),
+                height=260
+            )
+            fig_splits.update_yaxes(showgrid=True, gridcolor='rgba(255,255,255,0.06)', range=[50, 100])
+            fig_splits.update_xaxes(showgrid=False)
+            st.plotly_chart(fig_splits, use_container_width=True, config={"displayModeBar": False})
+        except Exception as e:
+            logger.warning(f"Failed to generate splits chart: {e}")
+
 
 # ==============================================================================
 # Stage 1: Upload (Hero + File Uploader + JD Input)

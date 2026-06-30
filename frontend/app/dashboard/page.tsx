@@ -411,6 +411,63 @@ export default function Dashboard() {
                                 </div>
                             </div>
                         </div>
+
+                        {/* Split Experiments Section */}
+                        {metrics.split_experiments && (
+                            <div className="mt-8 pt-8 border-t border-muted">
+                                <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
+                                    <Target className="h-5 w-5 text-primary" />
+                                    Data Splitting Experiments Comparison
+                                </h3>
+                                <p className="text-sm text-muted-foreground mb-6">
+                                    Below is a comparison of the broad category SVM classifier trained on different data-splitting ratios (stratified by category) from the training set.
+                                </p>
+                                
+                                <div className="grid gap-6 md:grid-cols-2">
+                                    {/* Table of experiments */}
+                                    <div className="p-4 bg-muted/10 rounded-xl border border-muted-foreground/10">
+                                        <h4 className="text-base font-bold mb-4">Splits Metrics Table</h4>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-sm text-left text-muted-foreground">
+                                                <thead className="text-xs text-foreground uppercase bg-muted/50">
+                                                    <tr>
+                                                        <th className="px-4 py-2 rounded-l-lg">Split Ratio</th>
+                                                        <th className="px-4 py-2">Train Count</th>
+                                                        <th className="px-4 py-2">Test Accuracy</th>
+                                                        <th className="px-4 py-2 rounded-r-lg">Macro F1</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-muted/30">
+                                                    {metrics.split_experiments.map((s: any) => (
+                                                        <tr key={s.split_name}>
+                                                            <td className="px-4 py-3 font-semibold text-foreground">{s.split_name}</td>
+                                                            <td className="px-4 py-3">{s.train_count.toLocaleString()}</td>
+                                                            <td className="px-4 py-3 text-primary">{(s.test_accuracy * 100).toFixed(2)}%</td>
+                                                            <td className="px-4 py-3">{(s.macro_f1 * 100).toFixed(2)}%</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    {/* Chart of experiments */}
+                                    <div className="p-4 bg-muted/10 rounded-xl border border-muted-foreground/10 h-[300px]">
+                                        <h4 className="text-base font-bold mb-3">Accuracy vs. Split Ratio Chart (%)</h4>
+                                        <ResponsiveContainer width="100%" height="90%">
+                                            <BarChart data={splitData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                                <XAxis dataKey="name" stroke="#A1A1AA" fontSize={11} />
+                                                <YAxis stroke="#A1A1AA" domain={[60, 100]} fontSize={11} />
+                                                <Tooltip contentStyle={{ background: '#18181B', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px' }} />
+                                                <Legend verticalAlign="top" height={36} iconSize={10} wrapperStyle={{ fontSize: '11px' }} />
+                                                <Bar dataKey="Accuracy" fill="#6C63FF" radius={[4, 4, 0, 0]} />
+                                                <Bar dataKey="F1" fill="#43E97B" radius={[4, 4, 0, 0]} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             )}
