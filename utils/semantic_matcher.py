@@ -16,26 +16,49 @@ from typing import Dict, Tuple
 from utils.errors import ErrorCode, get_error, log_error
 
 CATEGORY_DESCRIPTIONS = {
-    "accountant": "Financial professional managing accounts, budgets, tax preparation, and financial reporting using QuickBooks and Excel",
-    "advocate": "Legal professional providing legal research, case law analysis, litigation support, and client representation",
-    "agriculture": "Agricultural expert in crop management, farming techniques, soil science, and sustainable agriculture practices",
-    "banking": "Banking professional handling financial products, customer service, loan processing, and risk management",
-    "business_analyst": "Business analyst gathering requirements, analyzing data with SQL and Excel, creating reports with Power BI",
-    "data_science": "Data scientist building machine learning models using Python, SQL, statistics, and data visualization",
-    "database": "Database administrator managing SQL databases, designing schemas, optimizing queries, and ensuring data integrity",
-    "devops_engineer": "DevOps engineer automating infrastructure with Docker, Kubernetes, CI/CD pipelines, and cloud platforms",
-    "electrical_engineering": "Electrical engineer designing circuits, PCBs, working with embedded systems and power electronics",
-    "hr": "Human resources specialist managing recruitment, employee relations, payroll, and HR information systems",
-    "information_technology": "IT professional providing technical support, managing networks, servers, and troubleshooting systems",
-    "java_developer": "Java developer building enterprise applications with Spring Framework, SQL databases, and microservices",
-    "mechanical_engineer": "Mechanical engineer designing mechanical systems using CAD, SolidWorks, and manufacturing processes",
-    "network_security_engineer": "Security engineer protecting networks with firewalls, VPNs, penetration testing, and threat analysis",
-    "operations_manager": "Operations manager optimizing processes, leading teams, managing budgets and supply chain logistics",
-    "python_developer": "Python developer creating web applications with Django, Flask, APIs, and database integration",
-    "react_developer": "React developer building modern web interfaces with JavaScript, TypeScript, Redux, and responsive design",
-    "sales": "Sales professional managing customer relationships, lead generation, business development, and CRM systems",
-    "testing": "QA engineer performing manual and automated testing, writing test cases, and ensuring software quality",
-    "web_designing": "Web designer creating user interfaces with HTML, CSS, Adobe tools, and responsive design principles",
+    "Accountant": "Financial professional managing accounts, budgets, tax preparation, and financial reporting using QuickBooks and Excel",
+    "Advocate": "Legal professional providing legal research, case law analysis, litigation support, and client representation",
+    "Agriculture": "Agricultural expert in crop management, farming techniques, soil science, and sustainable agriculture practices",
+    "Apparel": "Apparel and fashion design professional specializing in clothing manufacturing, fabric sourcing, and garment styling",
+    "Architecture": "Architectural designer creating building designs, blueprints, utilizing AutoCAD, Revit, and project planning",
+    "Arts": "Creative professional in fine arts, graphic design, illustration, performing arts, and visual communication",
+    "Automobile": "Automotive engineer or specialist managing vehicle design, mechanical diagnostics, assembly, and manufacturing processes",
+    "Aviation": "Aviation professional managing aircraft operations, flight safety, piloting, navigation, or aerospace maintenance",
+    "BPO": "Business Process Outsourcing specialist handling customer support, call center operations, back-office tasks, and service delivery",
+    "Banking": "Banking professional handling financial products, customer service, loan processing, and risk management",
+    "Blockchain": "Blockchain developer building decentralized applications, smart contracts using Solidity, Web3, and cryptocurrency technologies",
+    "Building and Construction": "Construction manager or engineer overseeing structural building, site safety, contracting, and civil works",
+    "Business Analyst": "Business analyst gathering requirements, analyzing data with SQL and Excel, creating reports with Power BI",
+    "Civil Engineer": "Civil engineer designing and supervising construction of infrastructure projects like roads, bridges, and public works",
+    "Consultant": "Business consultant advising organizations on strategy, operations, performance optimization, and problem-solving",
+    "Data Science": "Data scientist building machine learning models using Python, SQL, statistics, and data visualization",
+    "Database": "Database administrator managing SQL databases, designing schemas, optimizing queries, and ensuring data integrity",
+    "Designing": "Visual designer focusing on graphic design, UI design, brand styling, layouts, and creative assets",
+    "DevOps": "DevOps engineer automating infrastructure with Docker, Kubernetes, CI/CD pipelines, and cloud platforms",
+    "Digital Media": "Digital media specialist managing content creation, social media marketing, digital advertising, and online branding",
+    "DotNet Developer": "DotNet developer building applications using C#, ASP.NET, SQL Server, and Microsoft technology stack",
+    "ETL Developer": "ETL developer designing data integration, data warehousing, extracting, transforming, and loading data using SQL and ETL tools",
+    "Education": "Educator, teacher, or trainer developing curricula, lecturing, instructing, and managing academic programs",
+    "Electrical Engineering": "Electrical engineer designing circuits, PCBs, working with embedded systems and power electronics",
+    "Finance": "Finance professional managing investments, corporate treasury, financial modeling, portfolio risk, and capital structure",
+    "Food and Beverages": "Food and beverage professional managing culinary operations, restaurant services, food safety, and hospitality logistics",
+    "Health and Fitness": "Health and fitness professional or trainer coaching personal wellness, nutrition, exercise programs, and sports science",
+    "Human Resources": "Human resources specialist managing recruitment, employee relations, payroll, and HR information systems",
+    "Information Technology": "IT professional providing technical support, managing networks, servers, and troubleshooting systems",
+    "Java Developer": "Java developer building enterprise applications with Spring Framework, SQL databases, and microservices",
+    "Management": "Management executive overseeing business strategy, department leadership, team supervision, and organizational performance",
+    "Mechanical Engineer": "Mechanical engineer designing mechanical systems using CAD, SolidWorks, and manufacturing processes",
+    "Network Security Engineer": "Security engineer protecting networks with firewalls, VPNs, penetration testing, and threat analysis",
+    "Operations Manager": "Operations manager optimizing processes, leading teams, managing budgets and supply chain logistics",
+    "PMO": "Project management operations specialist managing project lifecycles, resource scheduling, Agile/Scrum methodologies, and delivery",
+    "Public Relations": "Public relations specialist managing media communications, brand reputation, press releases, and corporate messaging",
+    "Python Developer": "Python developer creating web applications with Django, Flask, APIs, and database integration",
+    "React Developer": "React developer building modern web interfaces with JavaScript, TypeScript, Redux, and responsive design",
+    "SAP Developer": "SAP consultant or developer configuring ERP modules, writing ABAP, and managing enterprise business systems",
+    "SQL Developer": "SQL developer writing complex queries, stored procedures, database views, and optimizing database performance",
+    "Sales": "Sales professional managing customer relationships, lead generation, business development, and CRM systems",
+    "Testing": "QA engineer performing manual and automated testing, writing test cases, and ensuring software quality",
+    "Web Designing": "Web designer creating user interfaces with HTML, CSS, Adobe tools, and responsive design principles"
 }
 
 
@@ -55,7 +78,7 @@ def _load_model():
 @st.cache_resource(show_spinner=False)
 def _precompute_category_embeddings():
     """
-    Batch-encode all 20 category descriptions once and cache the result.
+    Batch-encode all 43 category descriptions once and cache the result.
     Every subsequent call returns the cached dict instantly — zero GPU/CPU cost.
     """
     model = _load_model()
@@ -64,7 +87,7 @@ def _precompute_category_embeddings():
     try:
         categories   = list(CATEGORY_DESCRIPTIONS.keys())
         descriptions = list(CATEGORY_DESCRIPTIONS.values())
-        matrix = model.encode(descriptions, convert_to_numpy=True, batch_size=20)
+        matrix = model.encode(descriptions, convert_to_numpy=True, batch_size=43)
         return {cat: emb for cat, emb in zip(categories, matrix)}
     except Exception as e:
         log_error(get_error(ErrorCode.SVM_MODEL_ERROR), {"context": "Precomputing embeddings", "error": str(e)})
