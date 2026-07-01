@@ -399,3 +399,39 @@ class TestRoleStandardsResolver:
 
         assert "Kubernetes" in matched
         assert "MLflow" in matched
+
+    @patch('utils.gap_analyzer.json.load')
+    @patch('pathlib.Path.exists')
+    def test_analyze_gaps_experience_level_dynamic_scoring(self, mock_exists, mock_json_load):
+        """Verify that match percentage adjusts based on experience_level and advanced_skills."""
+        mock_exists.return_value = True
+        mock_json_load.side_effect = [{
+            "job_categories": {
+                "data_science": {
+                    "title": "Data Science",
+                    "required_skills": ["Python", "SQL"],
+                    "recommended_skills": ["Pandas"],
+                    "nice_to_have": ["NLP"],
+                    "advanced_skills": ["MLOps", "Kubernetes"],
+                    "weights": {
+                        "required": 1.0,
+                        "recommended": 0.6,
+                        "nice_to_have": 0.3,
+                        "advanced": 0.8
+                    }
+                }
+            }
+        }, {"resources": {}}]
+        
+        analyzer = GapAnalyzer()
+        
+        user_skills = ["Python", "SQL", "Pandas", "NLP"]
+        
+        # Case A: Intern level -> missing advanced skills should NOT penalize the score.
+        result_intern = analyzer.analyze_gaps(user_skills, "data_science", experience_level="Internship")
+        assert result_intern["match_percentage"] == 100.0
+        assert "MLOps" in result_intern["missing_advanced"]
+        
+        # Case B: 1+ Years level -> missing advanced skills SHOULD penalize the score.
+        result_pro = analyzer.analyze_gaps(user_skills, "data_science", experience_level="1+ Years")
+        assert result_pro["match_percentage"] == 64.4

@@ -71,6 +71,7 @@ DEFAULTS = {
     "jd_match_result": None,        # output from JDMatcher
     "weighted_score_result": None,  # output from weighted_scorer
     "ai_feedback": None,            # output from AIFeedbackGenerator
+    "experience_level": "Internship", # default experience level
 }
 for k, v in DEFAULTS.items():
     if k not in st.session_state:
@@ -864,7 +865,8 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = "", 
         missing_skills = []
         extra_skills   = []
 
-    analysis = analyzer.analyze_gaps(skill_data["all_skills"], target_role, jd_text=jd_text)
+    exp_level = st.session_state.get("experience_level", "Internship")
+    analysis = analyzer.analyze_gaps(skill_data["all_skills"], target_role, jd_text=jd_text, experience_level=exp_level)
     st.session_state["gap_analysis"] = analysis
 
     if jd_text:
@@ -872,19 +874,28 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = "", 
         req_skills = analysis.get("required_skills", [])
         rec_skills = analysis.get("recommended_skills", [])
         nth_skills = analysis.get("nice_to_have", [])
+        adv_skills = analysis.get("advanced_skills", [])
         
         missing_req = analysis.get("missing_required", [])
         missing_rec = analysis.get("missing_recommended", [])
         missing_nth = analysis.get("missing_nice_to_have", [])
+        missing_adv = analysis.get("missing_advanced", [])
         
         matched_req = [s for s in req_skills if s not in missing_req]
         matched_rec = [s for s in rec_skills if s not in missing_rec]
         matched_nth = [s for s in nth_skills if s not in missing_nth]
+        matched_adv = [s for s in adv_skills if s not in missing_adv]
         
-        matched_skills = matched_req + matched_rec + matched_nth
-        missing_skills = missing_req + missing_rec + missing_nth
+        is_intern = exp_level in ["Beginner", "Some Projects", "Internship"]
         
-        target_skills_set = {s.lower() for s in req_skills + rec_skills + nth_skills}
+        if is_intern:
+            matched_skills = matched_req + matched_rec + matched_nth
+            missing_skills = missing_req + missing_rec + missing_nth
+        else:
+            matched_skills = matched_req + matched_rec + matched_nth + matched_adv
+            missing_skills = missing_req + missing_rec + missing_nth + missing_adv
+        
+        target_skills_set = {s.lower() for s in req_skills + rec_skills + nth_skills + adv_skills}
         extra_skills = [
             s for s in skill_data["all_skills"] 
             if not analyzer._is_skill_matched(s, target_skills_set)
@@ -938,7 +949,7 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = "", 
         progress.progress(85, text="🤖 Generating AI feedback...")
         try:
             feedback_gen = AIFeedbackGenerator()
-            score_result = st.session_state.get("weighted_score_result", {})
+            score_result = st.session_state.get("weighted_score_result") or {}
             section_scores = jd_match_result.get("section_scores", {}) if jd_match_result else {}
             ai_feedback = feedback_gen.generate(
                 jd_text=jd_text,
@@ -1302,10 +1313,12 @@ def render_review_stage():
             from utils.gap_analyzer import GapAnalyzer
             db = _get_db()
             analyzer = GapAnalyzer(db)
+            exp_level = st.session_state.get("experience_level", "Internship")
             new_analysis = analyzer.analyze_gaps(
                 final_skills,
                 st.session_state["target_role"],
                 jd_text=st.session_state.get("jd_text", ""),
+                experience_level=exp_level
             )
             st.session_state["gap_analysis"] = new_analysis
 
@@ -1360,11 +1373,12 @@ def render_builder_stage():
         target = dream_role.lower().replace(" ", "_") if dream_role else "software_engineer"
         st.session_state["target_role"] = target
         st.session_state["prediction"] = {"top_category": target, "confidence": 0.5, "all_scores": {target: 0.5}}
+        st.session_state["experience_level"] = experience_level
 
         from utils.gap_analyzer import GapAnalyzer
         db = _get_db()
         analyzer = GapAnalyzer(db)
-        analysis = analyzer.analyze_gaps(skills_list, target)
+        analysis = analyzer.analyze_gaps(skills_list, target, experience_level=experience_level)
         st.session_state["gap_analysis"] = analysis
         st.session_state["growth_data"] = {
             "score_delta": 0, "skills_added": [], "is_improved": False, "first_upload": True
@@ -1694,19 +1708,43 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
                 else:
                     st.info("No extra skills detected.")
         else:
-            c1, c2 = st.columns(2)
+            is_intern_or_beginner = st.session_state.get("experience_level", "Internship") in ["Beginner", "Some Projects", "Internship"]
+            c1, c2, c3 = st.columns(3)
             with c1:
                 st.markdown("#### 🔴 Missing Required")
-                if analysis["missing_required"]:
+                if analysis.get("missing_required"):
                     st.markdown(" ".join([f'<span class="skill-pill missing">{s}</span>' for s in analysis["missing_required"]]), unsafe_allow_html=True)
                 else:
                     st.success("None! Excellent coverage. 🎉")
             with c2:
                 st.markdown("#### 🟡 Missing Recommended")
-                if analysis["missing_recommended"]:
+                if analysis.get("missing_recommended"):
                     st.markdown(" ".join([f'<span class="skill-pill missing">{s}</span>' for s in analysis["missing_recommended"]]), unsafe_allow_html=True)
                 else:
                     st.success("None! Great fit. 🌟")
+            with c3:
+                if is_intern_or_beginner:
+                    st.markdown("#### 🚀 Path to Senior (Advanced)")
+                    advanced_skills = analysis.get("advanced_skills", [])
+                    if advanced_skills:
+                        missing_adv = analysis.get("missing_advanced", [])
+                        pills = []
+                        for s in advanced_skills:
+                            if s in missing_adv:
+                                pills.append(f'<span class="skill-pill missing" style="opacity: 0.6; border: 1px dashed red;">{s}</span>')
+                            else:
+                                pills.append(f'<span class="skill-pill present">{s}</span>')
+                        st.markdown(" ".join(pills), unsafe_allow_html=True)
+                        st.caption("ℹ️ *These advanced skills do not penalize your score. Learn them next to grow!*")
+                    else:
+                        st.info("No advanced skills listed.")
+                else:
+                    st.markdown("#### 🚨 Missing Advanced")
+                    missing_adv = analysis.get("missing_advanced", [])
+                    if missing_adv:
+                        st.markdown(" ".join([f'<span class="skill-pill missing">{s}</span>' for s in missing_adv]), unsafe_allow_html=True)
+                    else:
+                        st.success("None missing! Excellent. 🌟")
 
     with tab_feedback:
         st.markdown("### 🤖 AI Recruiter Feedback")
@@ -2202,13 +2240,13 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
             # Dynamically compile the latest context from the resume assessment results
             context = {
                 "target_role": st.session_state.get("target_role", "Unknown"),
-                "match_score": f"{st.session_state.get('gap_analysis', {}).get('match_percentage', 0.0):.1f}%",
-                "skills_found": st.session_state.get("skill_data", {}).get("all_skills", []),
+                "match_score": f"{(st.session_state.get('gap_analysis') or {}).get('match_percentage', 0.0):.1f}%",
+                "skills_found": (st.session_state.get("skill_data") or {}).get("all_skills", []),
                 "missing_skills": (
-                    st.session_state.get("gap_analysis", {}).get("missing_required", []) +
-                    st.session_state.get("gap_analysis", {}).get("missing_recommended", [])
+                    (st.session_state.get("gap_analysis") or {}).get("missing_required", []) +
+                    (st.session_state.get("gap_analysis") or {}).get("missing_recommended", [])
                 ),
-                "verdict": st.session_state.get("weighted_score_result", {}).get("verdict", "N/A")
+                "verdict": (st.session_state.get("weighted_score_result") or {}).get("verdict", "N/A")
             }
             # Instantiate or update AI Coach Agent with latest context
             st.session_state["ai_agent"] = AIAssistant(context=context)

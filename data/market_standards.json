@@ -367,16 +367,33 @@
         "NumPy"
       ],
       "nice_to_have": [
-        "Big Data",
         "Spark",
         "NLP",
-        "Deep Learning",
-        "MLOps"
+        "Deep Learning"
       ],
+      "advanced_skills": [
+        "MLOps",
+        "Big Data",
+        "Kubernetes",
+        "Airflow"
+      ],
+      "skill_difficulties": {
+        "Python": "Beginner",
+        "Pandas": "Beginner",
+        "SQL": "Intermediate",
+        "Machine Learning": "Intermediate",
+        "Statistics": "Intermediate",
+        "Scikit-learn": "Intermediate",
+        "PyTorch": "Advanced",
+        "TensorFlow": "Advanced",
+        "MLOps": "Advanced",
+        "Kubernetes": "Advanced"
+      },
       "weights": {
         "required": 1.0,
         "recommended": 0.6,
-        "nice_to_have": 0.3
+        "nice_to_have": 0.3,
+        "advanced": 0.8
       }
     },
     "database": {

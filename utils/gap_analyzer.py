@@ -83,13 +83,15 @@ class GapAnalyzer:
                      {"context": f"Loading {path}", "error": str(e)})
             return {}
             
-    def analyze_gaps(self, user_skills: List[str], target_role: str, jd_text: str = "") -> Dict[str, Any]:
+    def analyze_gaps(self, user_skills: List[str], target_role: str, jd_text: str = "", experience_level: str = "Internship") -> Dict[str, Any]:
         """
         Identify missing skills for a target role, prioritizing DB data.
         
         Args:
             user_skills: List of skills extracted from resume
             target_role: Target job category (key or title)
+            jd_text: Optional job description text
+            experience_level: User's experience level ("Beginner", "Some Projects", "Internship", "1+ Years")
             
         Returns:
             Dictionary containing gaps and recommendations.
@@ -140,8 +142,10 @@ class GapAnalyzer:
                             required_skills=resolved.get("required_skills", []),
                             recommended_skills=resolved.get("recommended_skills", []),
                             nice_to_have_skills=resolved.get("nice_to_have", resolved.get("nice_to_have_skills", [])),
+                            advanced_skills=resolved.get("advanced_skills", []),
                             salary_ranges=resolved.get("salary_ranges", {}),
                             learning_resources=resolved.get("learning_resources", {}),
+                            skill_difficulties=resolved.get("skill_difficulties", {})
                         )
                     except Exception as db_save_err:
                         import logging
@@ -180,8 +184,10 @@ class GapAnalyzer:
                             required_skills=role_data.get("required_skills", []),
                             recommended_skills=role_data.get("recommended_skills", []),
                             nice_to_have_skills=role_data.get("nice_to_have", role_data.get("nice_to_have_skills", [])),
+                            advanced_skills=role_data.get("advanced_skills", []),
                             salary_ranges=role_data.get("salary_ranges", {}),
                             learning_resources=role_data.get("learning_resources", {}),
+                            skill_difficulties=role_data.get("skill_difficulties", {})
                         )
                         if not success:
                             import logging
@@ -200,6 +206,7 @@ class GapAnalyzer:
                 "missing_required": [],
                 "missing_recommended": [],
                 "missing_nice_to_have": [],
+                "missing_advanced": [],
                 "match_percentage": 0.0,
                 "recommendations": [
                     f"No skill standards found for '{target_role}'. "
@@ -214,35 +221,55 @@ class GapAnalyzer:
         required = [s for s in role_data.get("required_skills", []) if not _is_noise(s)]
         recommended = [s for s in role_data.get("recommended_skills", []) if not _is_noise(s)]
         nice_to_have = [s for s in role_data.get("nice_to_have", []) if not _is_noise(s)]
+        advanced = [s for s in role_data.get("advanced_skills", []) if not _is_noise(s)]
         
-        # Deduplicate redundant language variations across required, recommended, and nice_to_have
-        all_req_skills = required + recommended + nice_to_have
+        # Deduplicate redundant language variations across required, recommended, nice_to_have, and advanced
+        all_req_skills = required + recommended + nice_to_have + advanced
         deduped_all = deduplicate_language_skills(all_req_skills)
         deduped_set = set(s.lower() for s in deduped_all)
         
         required = [s for s in required if s.lower() in deduped_set]
         recommended = [s for s in recommended if s.lower() in deduped_set]
         nice_to_have = [s for s in nice_to_have if s.lower() in deduped_set]
+        advanced = [s for s in advanced if s.lower() in deduped_set]
+        
         weights = role_data.get("weights", {"required": 1.0, "recommended": 0.6, "nice_to_have": 0.3})
+        weights_advanced = weights.get("advanced", 0.5)
         
         # Calculate gaps using smart skill matching
         missing_required = [s for s in required if not self._is_skill_matched(s, user_skills_set)]
         missing_recommended = [s for s in recommended if not self._is_skill_matched(s, user_skills_set)]
         missing_nice = [s for s in nice_to_have if not self._is_skill_matched(s, user_skills_set)]
+        missing_advanced = [s for s in advanced if not self._is_skill_matched(s, user_skills_set)]
         
-        # Calculate extra skills (bonus skills the candidate has that are not required/recommended/nice-to-have)
-        target_skills_set = {s.lower() for s in required + recommended + nice_to_have}
+        # Calculate extra skills (bonus skills the candidate has that are not required/recommended/nice-to-have/advanced)
+        target_skills_set = {s.lower() for s in required + recommended + nice_to_have + advanced}
         extra_skills = [s for s in user_skills if not self._is_skill_matched(s, target_skills_set)]
         
-        # Calculate weighted match percentage
-        total_weight = (len(required) * weights["required"] + 
-                       len(recommended) * weights["recommended"] +
-                       len(nice_to_have) * weights["nice_to_have"])
+        is_intern_or_beginner = experience_level in ["Beginner", "Some Projects", "Internship"]
         
-        matched_weight = ((len(required) - len(missing_required)) * weights["required"] +
-                         (len(recommended) - len(missing_recommended)) * weights["recommended"] +
-                         (len(nice_to_have) - len(missing_nice)) * weights["nice_to_have"])
-                         
+        # Calculate weighted match percentage
+        if is_intern_or_beginner:
+            # For interns, ignore advanced skills in weights
+            total_weight = (len(required) * weights.get("required", 1.0) + 
+                           len(recommended) * weights.get("recommended", 0.6) +
+                           len(nice_to_have) * weights.get("nice_to_have", 0.3))
+            
+            matched_weight = ((len(required) - len(missing_required)) * weights.get("required", 1.0) +
+                             (len(recommended) - len(missing_recommended)) * weights.get("recommended", 0.6) +
+                             (len(nice_to_have) - len(missing_nice)) * weights.get("nice_to_have", 0.3))
+        else:
+            # For 1+ Years, include advanced skills
+            total_weight = (len(required) * weights.get("required", 1.0) + 
+                           len(recommended) * weights.get("recommended", 0.6) +
+                           len(nice_to_have) * weights.get("nice_to_have", 0.3) +
+                           len(advanced) * weights_advanced)
+            
+            matched_weight = ((len(required) - len(missing_required)) * weights.get("required", 1.0) +
+                             (len(recommended) - len(missing_recommended)) * weights.get("recommended", 0.6) +
+                             (len(nice_to_have) - len(missing_nice)) * weights.get("nice_to_have", 0.3) +
+                             (len(advanced) - len(missing_advanced)) * weights_advanced)
+                          
         match_percentage = (matched_weight / total_weight * 100) if total_weight > 0 else 0.0
         
         # Apply transferable skill bonus (+1.0% per extra skill, capped at 10.0%)
@@ -256,16 +283,18 @@ class GapAnalyzer:
         )
         
         # Get Learning Resources (Hybrid DB + JSON)
-        learning_paths = self._get_learning_resources(missing_required + missing_recommended)
+        learning_paths = self._get_learning_resources(missing_required + missing_recommended + missing_advanced)
         
         return {
             "role": role_data.get("title", target_role),
             "required_skills": required,
             "recommended_skills": recommended,
             "nice_to_have": nice_to_have,
+            "advanced_skills": advanced,
             "missing_required": missing_required,
             "missing_recommended": missing_recommended,
             "missing_nice_to_have": missing_nice,
+            "missing_advanced": missing_advanced,
             "extra_skills": extra_skills,
             "match_percentage": round(match_percentage, 1),
             "recommendations": recommendations,

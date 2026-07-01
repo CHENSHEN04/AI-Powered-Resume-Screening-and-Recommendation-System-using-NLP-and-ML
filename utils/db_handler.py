@@ -361,7 +361,7 @@ class DatabaseManager:
             
             # 2. Fetch Skills using separate robust queries to avoid PostgREST relationship caching issues
             standards_res = self.supabase.table("market_standards")\
-                .select("importance_level, skill_id")\
+                .select("importance_level, skill_id, difficulty")\
                 .eq("job_category_id", cat_id)\
                 .execute()
                 
@@ -370,7 +370,9 @@ class DatabaseManager:
                 "weights": cat_data.get("weights", {}),
                 "required_skills": [],
                 "recommended_skills": [],
-                "nice_to_have": []
+                "nice_to_have": [],
+                "advanced_skills": [],
+                "skill_difficulties": {}
             }
             
             if standards_res.data:
@@ -387,12 +389,18 @@ class DatabaseManager:
                             if s_id in skill_map:
                                 skill_name = skill_map[s_id]
                                 importance = item["importance_level"]
+                                difficulty = item.get("difficulty")
+                                if difficulty:
+                                    result["skill_difficulties"][skill_name] = difficulty
+                                
                                 if importance == "required":
                                     result["required_skills"].append(skill_name)
                                 elif importance == "recommended":
                                     result["recommended_skills"].append(skill_name)
                                 elif importance == "nice_to_have":
                                     result["nice_to_have"].append(skill_name)
+                                elif importance == "advanced":
+                                    result["advanced_skills"].append(skill_name)
             
             return result
         except Exception as e:
@@ -429,9 +437,10 @@ class DatabaseManager:
 
     def save_custom_role(self, role_title: str, role_slug: str,
                          required_skills: list, recommended_skills: list,
-                         nice_to_have_skills: list,
+                         nice_to_have_skills: list, advanced_skills: list = None,
                          salary_ranges: dict = None,
-                         learning_resources: dict = None) -> tuple:
+                         learning_resources: dict = None,
+                         skill_difficulties: dict = None) -> tuple:
         """
         Save a user-defined job role to job_categories + market_standards.
         Uses separate SELECT after each write — works with all supabase-py versions.
@@ -440,10 +449,16 @@ class DatabaseManager:
         if not self.supabase:
             return False, "Database not connected."
         try:
+            if advanced_skills is None:
+                advanced_skills = []
+            if skill_difficulties is None:
+                skill_difficulties = {}
+                
             all_skills = (
                 [(s.strip(), "required")     for s in required_skills     if s and s.strip()] +
                 [(s.strip(), "recommended")  for s in recommended_skills  if s and s.strip()] +
-                [(s.strip(), "nice_to_have") for s in nice_to_have_skills if s and s.strip()]
+                [(s.strip(), "nice_to_have") for s in nice_to_have_skills if s and s.strip()] +
+                [(s.strip(), "advanced")     for s in advanced_skills     if s and s.strip()]
             )
             if not all_skills:
                 return False, "Custom role must include at least one required, recommended, or nice-to-have skill."
@@ -480,10 +495,14 @@ class DatabaseManager:
                     skill_id = sk2.data[0]["id"]
                 ms = self.supabase.table("market_standards").select("id")                     .eq("job_category_id", cat_id).eq("skill_id", skill_id).execute()
                 if not ms.data:
-                    self.supabase.table("market_standards").insert({
-                        "job_category_id": cat_id, "skill_id": skill_id,
+                    insert_data = {
+                        "job_category_id": cat_id,
+                        "skill_id": skill_id,
                         "importance_level": importance
-                    }).execute()
+                    }
+                    if skill_name in skill_difficulties:
+                        insert_data["difficulty"] = skill_difficulties[skill_name]
+                    self.supabase.table("market_standards").insert(insert_data).execute()
                     verify = self.supabase.table("market_standards").select("id")                         .eq("job_category_id", cat_id).eq("skill_id", skill_id).execute()
                     if verify.data:
                         saved_count += 1

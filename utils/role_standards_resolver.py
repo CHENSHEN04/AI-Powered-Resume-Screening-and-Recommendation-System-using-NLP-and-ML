@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
-DEFAULT_WEIGHTS = {"required": 1.0, "recommended": 0.6, "nice_to_have": 0.3}
+DEFAULT_WEIGHTS = {"required": 1.0, "recommended": 0.6, "nice_to_have": 0.3, "advanced": 0.8}
 GENERIC_FALLBACK_SKILLS = {
     "communication",
     "problem solving",
@@ -169,6 +169,7 @@ def normalize_standards(raw: Optional[Dict], role_title: str, source: str) -> Di
     required = _dedupe(raw.get("required_skills", []))
     recommended = _dedupe(raw.get("recommended_skills", []))
     nice = _dedupe(raw.get("nice_to_have", raw.get("nice_to_have_skills", [])))
+    advanced = _dedupe(raw.get("advanced_skills", []))
     return {
         "title": raw.get("title") or role_title.replace("_", " ").title(),
         "description": raw.get("description", ""),
@@ -176,6 +177,8 @@ def normalize_standards(raw: Optional[Dict], role_title: str, source: str) -> Di
         "recommended_skills": recommended,
         "nice_to_have": nice,
         "nice_to_have_skills": nice,
+        "advanced_skills": advanced,
+        "skill_difficulties": raw.get("skill_difficulties", {}),
         "salary_ranges": raw.get("salary_ranges", {}),
         "weights": raw.get("weights") or DEFAULT_WEIGHTS,
         "learning_resources": raw.get("learning_resources", {}),

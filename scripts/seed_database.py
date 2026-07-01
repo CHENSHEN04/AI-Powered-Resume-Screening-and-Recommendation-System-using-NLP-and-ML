@@ -70,6 +70,7 @@ def main():
         unique_skills.update(data.get("required_skills", []))
         unique_skills.update(data.get("recommended_skills", []))
         unique_skills.update(data.get("nice_to_have", []))
+        unique_skills.update(data.get("advanced_skills", []))
     
     # Collect from Learning Resources
     unique_skills.update(learning_resources.get("resources", {}).keys())
@@ -99,18 +100,23 @@ def main():
         
         # Helper to add entries
         def add_entries(skill_list, importance):
+            skill_diffs = data.get("skill_difficulties", {})
             for s_name in skill_list:
                 s_id = skill_map.get(s_name)
                 if s_id:
-                    market_entries.append({
+                    entry = {
                         "job_category_id": cat_id,
                         "skill_id": s_id,
                         "importance_level": importance
-                    })
+                    }
+                    if s_name in skill_diffs:
+                        entry["difficulty"] = skill_diffs[s_name]
+                    market_entries.append(entry)
         
         add_entries(data.get("required_skills", []), "required")
         add_entries(data.get("recommended_skills", []), "recommended")
         add_entries(data.get("nice_to_have", []), "nice_to_have")
+        add_entries(data.get("advanced_skills", []), "advanced")
 
     # Batch insert
     for i in range(0, len(market_entries), 100):
