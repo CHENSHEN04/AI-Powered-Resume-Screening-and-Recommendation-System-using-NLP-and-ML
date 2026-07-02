@@ -118,7 +118,7 @@ def _sync_session_analysis_to_db(db, user_id):
 def render_sidebar():
     db = _get_db()
     with st.sidebar:
-        st.markdown("# 🎯 Career Coach")
+        st.markdown("# 🎯 Deep Career Coach")
         st.caption("AI-Powered Resume Analysis")
         st.markdown("---")
 
