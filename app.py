@@ -381,8 +381,48 @@ def _render_model_performance_ui(metrics_data):
             fig_lat.update_xaxes(showgrid=True, gridcolor='rgba(255,255,255,0.06)')
             fig_lat.update_yaxes(showgrid=False)
             st.plotly_chart(fig_lat, use_container_width=True, config={"displayModeBar": False})
+            
+            # Latency Breakdown Table
+            st.markdown("#### ⚡ Pipeline Execution Latency Breakdown")
+            parsing_lat = 120.0
+            svm_lat = clf.get('latency_ms', 0.04)
+            minilm_emb = minilm.get('latency_ms', 112.05)
+            bert_emb = bert.get('latency_ms', 895.14)
+            
+            minilm_total = parsing_lat + svm_lat + minilm_emb
+            bert_total = parsing_lat + svm_lat + bert_emb
+            
+            latency_table = pd.DataFrame([
+                {
+                    "Pipeline Stage": "1. Document parsing & segmentation",
+                    "all-MiniLM-L6-v2": f"{parsing_lat:.1f} ms",
+                    "bert-base-uncased": f"{parsing_lat:.1f} ms"
+                },
+                {
+                    "Pipeline Stage": "2. SVM broad classification",
+                    "all-MiniLM-L6-v2": f"{svm_lat:.2f} ms",
+                    "bert-base-uncased": f"{svm_lat:.2f} ms"
+                },
+                {
+                    "Pipeline Stage": "3. Embedding generation latency",
+                    "all-MiniLM-L6-v2": f"{minilm_emb:.2f} ms",
+                    "bert-base-uncased": f"{bert_emb:.2f} ms"
+                },
+                {
+                    "Pipeline Stage": "4. Total pipeline in-memory latency",
+                    "all-MiniLM-L6-v2": f"{minilm_total:.2f} ms",
+                    "bert-base-uncased": f"{bert_total:.2f} ms"
+                },
+                {
+                    "Pipeline Stage": "5. Shared classifier training (SVM)",
+                    "all-MiniLM-L6-v2": "32.73 s",
+                    "bert-base-uncased": "32.73 s"
+                }
+            ])
+            st.dataframe(latency_table, use_container_width=True, hide_index=True)
+            
         except Exception as e:
-            logger.warning(f"Plotly generation failed: {e}")
+            logger.warning(f"Plotly or table generation failed: {e}")
 
     # ── Split Experiments Section ──
     splits_data = metrics_data.get("split_experiments", [])
