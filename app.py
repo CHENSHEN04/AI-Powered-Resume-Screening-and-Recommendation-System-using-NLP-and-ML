@@ -119,7 +119,7 @@ def render_sidebar():
     db = _get_db()
     with st.sidebar:
         st.markdown("# 🎯 Deep Career Coach")
-        st.caption("AI-Powered Resume Analysis")
+        st.caption("AI-Powered Resume Screening and Recommendation System")
         st.markdown("---")
 
         user = st.session_state.get("user")
