@@ -572,6 +572,8 @@ def render_upload_stage():
             st.session_state["file_bytes"] = file_bytes
             st.session_state["uploaded_file_name"] = uploaded_file.name
             show_role_selector_dialog(file_bytes, uploaded_file.name, jd_text.strip())
+    elif jd_text and jd_text.strip():
+        st.warning("👈 Please upload your resume to match it against this job description.")
 
     st.markdown("---")
     with st.expander("📊 About the AI Models & Training Performance"):
