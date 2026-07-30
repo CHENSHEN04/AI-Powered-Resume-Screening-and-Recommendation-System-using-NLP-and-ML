@@ -358,6 +358,12 @@ class GapAnalyzer:
         if self.db_manager:
             try:
                 db_paths = self.db_manager.get_learning_resources(missing_skills)
+                # DB rows can hold stale/hallucinated links saved before link
+                # verification existed (or from a previous bad AI generation).
+                # Re-verify at read time so a fix here also heals old bad data,
+                # instead of silently serving 404s forever.
+                for skill_name, resources in db_paths.items():
+                    db_paths[skill_name] = self._verify_resource_links(skill_name, resources)
                 paths.update(db_paths)
             except Exception:
                 pass
@@ -382,7 +388,7 @@ class GapAnalyzer:
 Generate exactly 2 high-quality recommended learning resources (e.g. online courses, official tutorials, or books) for each skill.
 Return ONLY a valid JSON object mapping each skill name to its array of resource objects. Each resource object must have these exact keys:
 - "title": "concise title of the course/tutorial"
-- "url": "a high-quality valid link (e.g., to Coursera, Udemy, or official documentation like react.dev or python.org)"
+- "url": "a real, currently-existing URL you are highly confident resolves correctly. Strongly prefer stable landing pages you are certain exist — official documentation home/tutorial pages (e.g. https://react.dev/learn, https://docs.python.org/3/tutorial/), a platform's general course-catalog/search page (e.g. https://www.coursera.org/search?query=..., https://www.udemy.com/courses/search/?q=...), or a well-known site's homepage. Do NOT invent or guess a specific deep-linked course slug/ID (e.g. a specific DataCamp/Udemy/Coursera course URL) unless you are certain it exists — a guessed URL that 404s is worse than a general page."
 - "type": "Course", "Article", "Video", or "Project"
 - "difficulty": "Beginner", "Intermediate", or "Advanced"
 
@@ -415,11 +421,16 @@ Return ONLY valid JSON. No markdown block backticks, no extra text."""
                             k_lower = k.lower()
                             if k_lower in skill_map and isinstance(v, list) and len(v) > 0:
                                 mapped_skill = skill_map[k_lower]
-                                paths[mapped_skill] = v
+                                # AI-suggested URLs can be hallucinated / lead to 404s
+                                # (e.g. guessed DataCamp course slugs). Verify each link
+                                # actually resolves before showing it to the user, and
+                                # substitute a guaranteed-valid fallback link otherwise.
+                                verified = self._verify_resource_links(mapped_skill, v)
+                                paths[mapped_skill] = verified
                                 # Write back to Supabase!
                                 if self.db_manager:
                                     try:
-                                        self.db_manager.save_learning_resources(mapped_skill, v)
+                                        self.db_manager.save_learning_resources(mapped_skill, verified)
                                     except Exception as db_save_err:
                                         import logging
                                         logging.warning(f"Failed to auto-harvest dynamic learning resources to DB: {db_save_err}")
@@ -428,6 +439,45 @@ Return ONLY valid JSON. No markdown block backticks, no extra text."""
                 logging.warning(f"Failed to generate dynamic learning resources in batch: {e}")
                 
         return paths
+
+    def _url_is_reachable(self, url: str) -> bool:
+        """Quick liveness check for a resource URL (used to catch AI-hallucinated links)."""
+        if not url or not url.startswith(("http://", "https://")):
+            return False
+        try:
+            import httpx
+            headers = {"User-Agent": "Mozilla/5.0 (DeepCareerCoach LinkChecker)"}
+            with httpx.Client(follow_redirects=True, timeout=4.0, headers=headers) as client:
+                resp = client.head(url)
+                if resp.status_code in (405, 403, 501):
+                    # Some sites reject HEAD requests; retry with a cheap GET.
+                    resp = client.get(url)
+                return resp.status_code < 400
+        except Exception:
+            return False
+
+    def _verify_resource_links(self, skill: str, resources: List[Dict]) -> List[Dict]:
+        """
+        Filter out any AI-suggested resource whose URL doesn't actually resolve
+        (broken/hallucinated link), so users never land on a 404 page. If every
+        suggested link fails, fall back to a guaranteed-valid search link.
+        """
+        live = []
+        for r in resources:
+            url = r.get("url") if isinstance(r, dict) else None
+            if self._url_is_reachable(url):
+                live.append(r)
+        if live:
+            return live
+
+        import urllib.parse
+        query = urllib.parse.quote(f"{skill} tutorial")
+        return [{
+            "title": f"Search for '{skill}' learning resources",
+            "url": f"https://www.google.com/search?q={query}",
+            "type": "Search",
+            "difficulty": "Beginner",
+        }]
 
     def _get_education_level(self, skill: str) -> Optional[int]:
         """

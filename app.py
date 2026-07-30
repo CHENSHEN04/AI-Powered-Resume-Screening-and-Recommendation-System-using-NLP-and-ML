@@ -17,6 +17,7 @@ import pandas as pd
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from utils.validators import validate_file
 from utils.ui_components import show_error, show_warning
@@ -571,6 +572,15 @@ def render_upload_stage():
             st.session_state["jd_text"] = jd_text.strip()
             st.session_state["file_bytes"] = file_bytes
             st.session_state["uploaded_file_name"] = uploaded_file.name
+
+            # Auto-detect the likely target role from the resume/JD so the user
+            # doesn't have to manually search the dropdown for it.
+            with st.spinner("🔎 Detecting your target role..."):
+                from utils.gap_analyzer import GapAnalyzer
+                known_roles = GapAnalyzer(_get_db()).get_all_known_roles()
+                st.session_state["guessed_target_role"] = _guess_target_role(
+                    file_bytes, uploaded_file.name, jd_text.strip(), known_roles
+                )
             show_role_selector_dialog(file_bytes, uploaded_file.name, jd_text.strip())
     elif jd_text and jd_text.strip():
         st.warning("👈 Please upload your resume to match it against this job description.")
@@ -666,6 +676,84 @@ def _create_custom_role_and_run(db, role_title, jd_text, file_bytes, filename):
     _run_analysis_pipeline(file_bytes, filename, jd_text)
 
 
+def _guess_target_role(file_bytes: bytes, filename: str, jd_text: str, known_roles: list) -> Optional[str]:
+    """
+    Best-effort auto-detection of the target job role from the uploaded resume
+    and/or pasted job description, so the user isn't forced to hunt for it
+    manually in the dropdown. Returns a role slug from `known_roles`, or None
+    if no confident guess could be made (dropdown then falls back to its
+    default first option).
+
+    Priority:
+      1. Job description title/body matched against known role titles
+         (JD is the strongest signal of the *targeted* role, when provided).
+      2. Resume text classified via the trained SVM/BERT classifier.
+      3. Resume skills mapped to the closest known role category.
+    """
+    if not known_roles:
+        return None
+
+    candidates = {slug: title for title, slug in known_roles}
+
+    # Cache the parsed resume text/skills/prediction so `_run_analysis_pipeline`
+    # doesn't have to redo the (slower) parsing step from scratch afterward.
+    resume_text = None
+    try:
+        from utils.parser import ResumeParser
+        parse_result = ResumeParser().parse(file_bytes, filename)
+        if parse_result.success and parse_result.text and len(parse_result.text.strip()) >= 50:
+            resume_text = parse_result.text
+            st.session_state["_role_guess_parse_result"] = parse_result
+    except Exception:
+        pass
+
+    # 1. Match the JD text/title against known role titles.
+    if jd_text and jd_text.strip():
+        try:
+            from utils.semantic_matcher import SemanticMatcher
+            matcher = SemanticMatcher()
+            first_lines = "\n".join(jd_text.strip().splitlines()[:5])
+            best_slug, score = matcher.find_best_match(first_lines or jd_text[:300], candidates)
+            if best_slug and score > 0.55:
+                return best_slug
+        except Exception:
+            pass
+
+    # 2. Classifier prediction from resume text.
+    if resume_text:
+        try:
+            from utils.classifier import JobClassifier
+            prediction = JobClassifier().predict(resume_text)
+            top_category = prediction.get("top_category")
+            if top_category and top_category not in ("Unknown", "Error") and not str(top_category).isdigit():
+                slug_guess = str(top_category).lower().strip().replace(" ", "_")
+                if slug_guess in candidates:
+                    return slug_guess
+                # Classifier may return a human title rather than a slug — match it.
+                from utils.semantic_matcher import SemanticMatcher
+                matcher = SemanticMatcher()
+                best_slug, score = matcher.find_best_match(str(top_category), candidates)
+                if best_slug and score > 0.6:
+                    return best_slug
+        except Exception:
+            pass
+
+        # 3. Fall back to skill-category mapping.
+        try:
+            extractor = SkillExtractor()
+            skill_data = extractor.extract_skills(resume_text)
+            st.session_state["_role_guess_skill_data"] = skill_data
+            role_cats = extractor.map_to_category(skill_data.get("all_skills", []))
+            if role_cats:
+                top_skill_cat = list(role_cats.keys())[0]
+                if top_skill_cat in candidates:
+                    return top_skill_cat
+        except Exception:
+            pass
+
+    return None
+
+
 @st.dialog("🎯 Select Targeted Job Role", width="large")
 def show_role_selector_dialog(file_bytes, filename, jd_text):
     db = _get_db()
@@ -683,7 +771,16 @@ def show_role_selector_dialog(file_bytes, filename, jd_text):
     # Add custom option
     options = role_titles + ["➕ Custom / Add new role..."]
     
-    selected_option = st.selectbox("Select target role:", options, index=0)
+    # Pre-select whatever role we auto-detected from the resume/JD, so the user
+    # isn't stuck manually hunting for it — they only need to change it if the
+    # detection got it wrong.
+    guessed_slug = st.session_state.get("guessed_target_role")
+    default_index = 0
+    if guessed_slug and guessed_slug in role_slugs:
+        default_index = role_slugs.index(guessed_slug)
+        st.success(f"🤖 Auto-detected from your resume{' & job description' if jd_text else ''}: **{role_titles[default_index]}**. Change it below if this isn't right.")
+    
+    selected_option = st.selectbox("Select target role:", options, index=default_index)
     
     if selected_option == "➕ Custom / Add new role...":
         # Render custom role fields
@@ -2299,20 +2396,25 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
                     "content": "👋 Hello! I am your AI Career Coach. Upload your resume and select a target role to get custom-tailored guidance, or ask me any general career questions right now!"
                 }]
 
-            for msg in st.session_state["chat_history"]:
-                with st.chat_message("user" if msg["role"] == "user" else "assistant"):
-                    st.write(msg["content"])
+            # Reserve the message area BEFORE the input widget so the transcript
+            # always renders above the chat box in the DOM. st.chat_input does not
+            # auto-float to the bottom when nested inside a tab, so whatever runs
+            # after it in code would otherwise appear *below* the input — which is
+            # why new turns were popping up under the chat box.
+            chat_area = st.container(height=420)
+
             if prompt := st.chat_input("Ask about your career path..."):
                 st.session_state["chat_history"].append({"role": "user", "content": prompt})
-                with st.chat_message("user"):
-                    st.write(prompt)
-                with st.chat_message("assistant"):
-                    with st.spinner("Thinking..."):
-                        user = st.session_state.get("user")
-                        user_id = user.id if user else "guest"
-                        response = st.session_state["ai_agent"].generate_response(prompt, user_id)
-                        st.write(response)
+                with st.spinner("Thinking..."):
+                    user = st.session_state.get("user")
+                    user_id = user.id if user else "guest"
+                    response = st.session_state["ai_agent"].generate_response(prompt, user_id)
                 st.session_state["chat_history"].append({"role": "assistant", "content": response})
+
+            with chat_area:
+                for msg in st.session_state["chat_history"]:
+                    with st.chat_message("user" if msg["role"] == "user" else "assistant"):
+                        st.write(msg["content"])
 
     with tab_metrics:
         st.markdown("## 📊 System Model Performance Comparison")
