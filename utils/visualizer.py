@@ -26,6 +26,11 @@ class Visualizer:
           4. Overall Match Score        — weighted match_percentage from gap_analyzer
           5. Skill Breadth              — how many distinct skills vs a 20-skill benchmark
           6. Profile Completeness       — penalises if skill count is very low
+
+        Axis labels are kept short (with the full description available on hover
+        and in an on-page legend) so they never get clipped by the plot's edge —
+        long labels like "Recommended Skills" or "Profile Completeness" used to
+        run past the chart boundary at normal browser zoom levels.
         """
         user_skills_set = {s.lower() for s in user_skills}
 
@@ -74,7 +79,7 @@ class Visualizer:
             req_cov  = _coverage(required,     []) if required else 100.0
             rec_cov  = _coverage(recommended,  []) if recommended else 100.0
             nice_cov = _coverage(nice_to_have, []) if nice_to_have else 100.0
-            
+
             # Boost nice_cov (Bonus Skills axis) if extra/transferable skills are present
             extra_skills_list = role_data.get("extra_skills", [])
             if not extra_skills_list and analyzer:
@@ -95,17 +100,20 @@ class Visualizer:
         # Profile completeness: penalise heavily if fewer than 5 skills found
         profile_comp   = 100.0 if len(user_skills) >= 5 else len(user_skills) / 5 * 100
 
-        categories = [
-            "Required Skills",
-            "Recommended Skills",
-            "Bonus Skills",
-            "Overall Match",
+        # Short labels avoid edge-clipping; full descriptions surface on hover.
+        categories = ["Required", "Recommended", "Bonus", "Overall Match", "Skill Breadth", "Completeness"]
+        full_names = [
+            "Required Skills Coverage",
+            "Recommended Skills Coverage",
+            "Bonus Skills Coverage",
+            "Overall Match Score",
             "Skill Breadth",
             "Profile Completeness",
         ]
         values = [req_cov, rec_cov, nice_cov, overall_match, skill_breadth, profile_comp]
         # Close the radar polygon
         categories_closed = categories + [categories[0]]
+        full_names_closed  = full_names + [full_names[0]]
         values_closed     = values     + [values[0]]
 
         fig = go.Figure()
@@ -116,7 +124,8 @@ class Visualizer:
             fillcolor="rgba(108, 99, 255, 0.25)",
             line=dict(color="#6C63FF", width=2),
             name="Your Profile",
-            hovertemplate="<b>%{theta}</b>: %{r:.1f}%<extra></extra>",
+            customdata=full_names_closed,
+            hovertemplate="<b>%{customdata}</b>: %{r:.1f}%<extra></extra>",
         ))
         # Add a 100% reference ring so users can see "full marks"
         fig.add_trace(go.Scatterpolar(
@@ -138,12 +147,16 @@ class Visualizer:
                     gridcolor="rgba(255, 255, 255, 0.12)",
                 ),
                 angularaxis=dict(
-                    tickfont=dict(size=11, color="#FAFAFA"), # Crisp white for outer axis labels
+                    tickfont=dict(size=12, color="#FAFAFA"), # Crisp white for outer axis labels
                     gridcolor="rgba(255, 255, 255, 0.12)",
                 ),
             ),
             showlegend=False,
-            margin=dict(l=60, r=60, t=40, b=40),
+            height=440,
+            # Generous, symmetric margins so axis labels ("Recommended", "Completeness",
+            # etc.) always have room to render fully instead of getting cut off by the
+            # figure's edge when the chart is rendered at typical browser widths.
+            margin=dict(l=100, r=100, t=50, b=50),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
         )
@@ -189,6 +202,9 @@ class Visualizer:
             x=categories,
             y=present_vals,
             marker_color="#43E97B",
+            text=present_vals,
+            textposition="outside",
+            texttemplate="%{text}",
             hovertemplate="<b>%{x}</b> — Present: %{y}<extra></extra>",
         ))
         fig.add_trace(go.Bar(
@@ -196,17 +212,32 @@ class Visualizer:
             x=categories,
             y=missing_vals,
             marker_color="#FF6584",
+            text=missing_vals,
+            textposition="outside",
+            texttemplate="%{text}",
             hovertemplate="<b>%{x}</b> — Missing: %{y}<extra></extra>",
         ))
+        # Give bars breathing room so the two side-by-side bars per category never
+        # visually touch/overlap, even when the chart is rendered at narrower widths.
+        max_total = max(max(present_vals, default=0), max(missing_vals, default=0), 1)
         fig.update_layout(
             barmode="group",
-            title=dict(text="Skill Coverage by Category", font=dict(size=14)),
-            xaxis_title="Category",
+            bargap=0.35,
+            bargroupgap=0.15,
+            title=dict(text="Skill Coverage by Category", font=dict(size=14), x=0, xanchor="left"),
+            xaxis_title="Skill Tier",
             yaxis_title="Number of Skills",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            margin=dict(l=40, r=20, t=50, b=40),
+            # Legend moved below the plot (was sharing the top row with the title,
+            # which caused the two to visually collide/overlap on narrower charts).
+            legend=dict(orientation="h", yanchor="top", y=-0.18, xanchor="center", x=0.5),
+            height=420,
+            margin=dict(l=50, r=20, t=60, b=70),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            yaxis=dict(gridcolor="rgba(255,255,255,0.08)"),
+            xaxis=dict(tickfont=dict(size=12)),
+            yaxis=dict(
+                gridcolor="rgba(255,255,255,0.08)",
+                range=[0, max_total * 1.25],  # headroom so the outside data labels don't get clipped
+            ),
         )
         return fig

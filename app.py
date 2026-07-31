@@ -1799,16 +1799,36 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
     st.markdown("---")
 
     # ── Charts ──
-    chart_left, chart_right = st.columns(2)
-    with chart_left:
-        st.markdown("### 🕸️ Skill Radar")
-        from utils.visualizer import Visualizer
-        radar = Visualizer.plot_radar_chart(skill_data["all_skills"], analysis)
-        st.plotly_chart(radar, use_container_width=True, config={"displayModeBar": False})
-    with chart_right:
-        st.markdown("### 📊 Gap Overview")
-        gap_chart = Visualizer.plot_skill_gap_chart(analysis)
-        st.plotly_chart(gap_chart, use_container_width=True, config={"displayModeBar": False})
+    # Stacked full-width (rather than side-by-side columns) so neither chart is
+    # ever squeezed into half the viewport — that's what was clipping the radar
+    # labels and crowding the bar chart at normal (100%) browser zoom.
+    from utils.visualizer import Visualizer
+
+    st.markdown("### 🕸️ Skill Radar")
+    st.caption(
+        "Six views of your profile strength, each scored 0–100%. The further a point "
+        "reaches toward the dotted outer ring, the stronger you are in that dimension — "
+        "a small, cramped shape means there's room to grow across the board."
+    )
+    with st.expander("What do the six axes mean?"):
+        st.markdown(
+            "- **Required** — % of the role's *must-have* skills you already have\n"
+            "- **Recommended** — % of the role's *nice-to-have-but-expected* skills you have\n"
+            "- **Bonus** — extra/transferable skills beyond the role's standard list\n"
+            "- **Overall Match** — your single weighted match score for this role\n"
+            "- **Skill Breadth** — how many distinct skills you list, vs. a 20-skill benchmark\n"
+            "- **Completeness** — flags a thin profile if you have fewer than 5 detected skills"
+        )
+    radar = Visualizer.plot_radar_chart(skill_data["all_skills"], analysis)
+    st.plotly_chart(radar, use_container_width=True, config={"displayModeBar": False})
+
+    st.markdown("### 📊 Skill Gap Breakdown")
+    st.caption(
+        "For each skill tier, how many skills you already have (🟢 green) versus how many "
+        "are still missing (🩷 pink). Taller pink bars mean bigger gaps to close in that tier."
+    )
+    gap_chart = Visualizer.plot_skill_gap_chart(analysis)
+    st.plotly_chart(gap_chart, use_container_width=True, config={"displayModeBar": False})
 
     st.markdown("---")
 
@@ -1936,7 +1956,7 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
                     
             # Interview Questions (fufilling 3.4.3 research specification)
             if ai_feedback.get("interview_questions"):
-                st.markdown("<br>#### 🎯 Custom Interview Prep", unsafe_allow_html=True)
+                st.markdown("<br>🎯 Custom Interview Prep", unsafe_allow_html=True)
                 st.caption("Customized technical and behavioral questions based on your profile and gaps:")
                 for i, q in enumerate(ai_feedback["interview_questions"], 1):
                     st.markdown(f"""
