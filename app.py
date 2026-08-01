@@ -101,7 +101,8 @@ def _sync_session_analysis_to_db(db, user_id):
         skill_data = st.session_state["skill_data"]
         
         # Save to database
-        db.save_resume_analysis(user_id, {
+        db.sync_auth_session()
+        res_id, save_err = db.save_resume_analysis(user_id, {
             "filename": filename,
             "storage_path": f"resumes/{user_id}/{filename}",
             "parsed_text": parse_result.text,
@@ -111,7 +112,13 @@ def _sync_session_analysis_to_db(db, user_id):
             "match_score": analysis["match_percentage"],
             "skills": [{"name": s, "category": "extracted"} for s in skill_data["all_skills"]]
         })
-        st.toast("💾 Guest resume analysis successfully saved to your account!", icon="📥")
+        if res_id:
+            st.toast("💾 Guest resume analysis successfully saved to your account!", icon="📥")
+        else:
+            # Previously this always showed a success toast even when the save
+            # silently failed. Now we surface the real reason so it's actually
+            # diagnosable instead of just disappearing.
+            st.toast(f"⚠️ Couldn't save your guest analysis to your account: {save_err}", icon="⚠️")
 
 
 
@@ -1564,7 +1571,7 @@ def render_dashboard_stage():
                     parse_result = st.session_state.get("parse_result")
                     resume_text = parse_result.text if parse_result else ""
                     
-                    res_id = db.save_resume_analysis(user.id, {
+                    res_id, save_err = db.save_resume_analysis(user.id, {
                         "filename": filename,
                         "storage_path": f"resumes/{user.id}/{filename}",
                         "parsed_text": resume_text,
@@ -1578,7 +1585,12 @@ def render_dashboard_stage():
                         st.toast("💾 Analysis successfully saved to your history!", icon="📥")
                         st.success("💾 Analysis saved successfully!")
                     else:
-                        st.error("Failed to save analysis. Please try again.")
+                        # Show the real error instead of a generic message. Common
+                        # causes: an expired session (try logging out and back in),
+                        # or a Supabase RLS policy rejecting the write.
+                        st.error(f"Failed to save analysis: {save_err or 'Unknown error'}")
+                        if save_err and ("jwt" in save_err.lower() or "expired" in save_err.lower() or "row-level security" in save_err.lower()):
+                            st.info("💡 This usually means your login session has expired. Try logging out and back in, then save again.")
 
     if jd_text:
         st.caption("📋 Analysis based on your provided job description")
@@ -1626,28 +1638,81 @@ def render_dashboard_stage():
         </div>
         """, unsafe_allow_html=True)
 
+    st.caption(
+        "🛈 **Match Score** is your overall fit for this role (full breakdown below). "
+        "**SVM Confidence** is a separate, smaller signal — how sure our AI classifier is "
+        "that your resume reads as a *typical* profile for this exact job category. It's "
+        "completely normal for this number to be low, even near 0%, if you're early-career, "
+        "self-taught, or coming from a different field — it only makes up 10% of your Match "
+        "Score, so it won't sink an otherwise strong application on its own."
+    )
+
+    # ── Encouragement banner ──
+    # A low score can easily read as "don't bother applying" to a job seeker, especially a
+    # fresh graduate — which isn't the intent. Frame it as a starting point, not a verdict.
+    if score < 55:
+        st.info(
+            "🌱 **A low score doesn't mean you shouldn't apply.** It means there are specific, "
+            "fixable gaps between your resume's wording and this job description — not that "
+            "you lack potential. Many employers hiring for entry-level and internship roles "
+            "weigh trainability and growth just as much as an exact keyword match. Use the "
+            "roadmap and learning paths below to close the biggest gaps, then decide."
+        )
+    elif score < 80:
+        st.info(
+            "✅ **You already have a solid foundation for this role.** The breakdown below "
+            "shows exactly which areas would push your profile from good to great — you don't "
+            "need a perfect score to be a competitive applicant."
+        )
+
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ── Score component breakdown ──
     if score_result:
+        comps = score_result["component_scores"]
+        comps_map = score_result.get("component_scores", {})
+        # De-weight each component back to its own 0–100% scale (i.e. "how well did I do
+        # on JUST this dimension"), since showing the raw weighted-points value next to a
+        # "(10%)" label made it look like a score had collapsed from 10% down to 0.6%,
+        # when really 0.6 is just 6% of that dimension's own 10-point ceiling.
+        bert_val  = comps_map.get("bert_semantic", 0)   / 0.5
+        skill_val = comps_map.get("skill_overlap", 0)   / 0.3
+        svm_val   = comps_map.get("svm_confidence", 0)  / 0.1
+        edu_val   = comps_map.get("education_match", 0) / 0.1
+
         with st.expander("⚖️ Score Breakdown (How this was calculated)", expanded=False):
-            comps = score_result["component_scores"]
+            st.caption(
+                "Each metric below is scored 0–100% on its own merits, then multiplied by its "
+                "weight to build your final Match Score. A low % in one area only costs you "
+                "that area's weight — it doesn't drag the others down."
+            )
             sc1, sc2, sc3, sc4 = st.columns(4)
-            sc1.metric("Profile Alignment (50%)", f"{comps['bert_semantic']:.1f}%")
-            sc2.metric("Skills Match (30%)", f"{comps['skill_overlap']:.1f}%")
-            sc3.metric("Industry Accuracy (10%)", f"{comps['svm_confidence']:.1f}%")
-            sc4.metric("Academic Alignment (10%)", f"{comps['education_match']:.1f}%")
-            st.caption("Final score = Alignment×50% + Skills Match×30% + Industry Accuracy×10% + Academic Alignment×10%")
-            
+            sc1.metric(
+                "Profile Alignment", f"{bert_val:.0f}%",
+                help="How closely the overall wording and content of your resume semantically matches the job description. Worth 50% of your final score — the single biggest factor.",
+            )
+            sc1.caption(f"= {comps['bert_semantic']:.1f} of 50 pts")
+            sc2.metric(
+                "Skills Match", f"{skill_val:.0f}%",
+                help="The share of the job description's specific listed skills that were found in your resume. Worth 30% of your final score.",
+            )
+            sc2.caption(f"= {comps['skill_overlap']:.1f} of 30 pts")
+            sc3.metric(
+                "Role Classifier Confidence", f"{svm_val:.0f}%",
+                help="The same figure as 'SVM Confidence' above — how sure our AI classifier is that your resume reads as a typical fit for this job category. Often naturally low for career-switchers or entry-level applicants. Worth only 10% of your final score.",
+            )
+            sc3.caption(f"= {comps['svm_confidence']:.1f} of 10 pts")
+            sc4.metric(
+                "Academic Alignment", f"{edu_val:.0f}%",
+                help="Whether your listed education level meets or exceeds what the job description asks for. Worth 10% of your final score.",
+            )
+            sc4.caption(f"= {comps['education_match']:.1f} of 10 pts")
+            st.caption("Final score = Profile Alignment×50% + Skills Match×30% + Role Classifier Confidence×10% + Academic Alignment×10%")
+            st.success("🌱 A weak score in any one category is common and rarely disqualifying by itself — the roadmap below turns each gap into a concrete next step.")
+
         # Build dynamic roadmap items list
         roadmap_items = []
-        
-        comps_map = score_result.get("component_scores", {})
-        bert_val = comps_map.get("bert_semantic", 0) / 0.5
-        skill_val = comps_map.get("skill_overlap", 0) / 0.3
-        svm_val = comps_map.get("svm_confidence", 0) / 0.1
-        edu_val = comps_map.get("education_match", 0) / 0.1
-        
+
         if bert_val < 80:
             roadmap_items.append(f"""<li style="margin-bottom: 1.3rem; padding-bottom: 1.0rem; border-bottom: 1px solid rgba(255,255,255,0.06);">
 <div style="font-weight: 700; color: #FAFAFA; font-size: 1.1rem; margin-bottom: 0.3rem;">🧠 1. Boost Profile & Job Alignment (Current Score: {bert_val:.1f}% | 50% weight)</div>
@@ -1728,9 +1793,18 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
     if jd_match and jd_match.get("section_scores"):
         with st.expander("📊 Section-Level Alignment Scores", expanded=True):
             st.markdown("""
-            This chart displays how closely each distinct section of your resume (Education, Experience, Skills, and Summary) semantically aligns with the context and intent of the Job Description. **Higher/greener bars indicate stronger relevance and a closer contextual match to the employer's expectations.**
+            For each resume section, an AI language model compares your wording against the job description and scores how closely the *meaning* overlaps — 🟢 green means strong overlap, 🔴 red means weak overlap.
             """)
-            
+            st.caption(
+                "🛈 This is a **wording/context match**, not a judgment of your ability. A low bar "
+                "usually means your resume phrases things differently than the job posting does — "
+                "e.g. it says \"led a team project\" and the JD says \"demonstrated leadership\" — "
+                "not that the experience is missing or wrong. It's also normal for **Experience** "
+                "to score lower than other sections if you're an entry-level or student applicant "
+                "and the JD is written for someone with several years on the job — that gap closes "
+                "naturally as you gain experience, and doesn't mean you shouldn't apply now."
+            )
+
             section_scores = jd_match["section_scores"]
             
             # Draw beautiful custom HTML bar chart
@@ -1769,8 +1843,9 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
 {bars_html}
 </div>
 </div>""", unsafe_allow_html=True)
+            st.caption("🟢 80%+ strong overlap · 🟡 55–79% partial overlap · 🔴 below 55% weak overlap — worth rewording, not a dealbreaker.")
             if jd_match.get("missing_sections"):
-                st.warning(f"⚠️ Sections not detected in resume: {', '.join(jd_match['missing_sections'])}")
+                st.warning(f"⚠️ We couldn't find a clear **{', '.join(jd_match['missing_sections'])}** section in your resume, so that score defaulted to 0%. Adding a clearly-labeled section (even a short one) usually fixes this instantly.")
 
     # ── Export ──
     try:

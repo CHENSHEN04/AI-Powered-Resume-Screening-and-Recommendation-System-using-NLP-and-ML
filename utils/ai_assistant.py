@@ -893,16 +893,26 @@ Based on this JD, extract and organize the skills, qualifications, and requireme
 - "required_skills": ["List of 6-8 core technical/hard skills absolutely required for this role as specified in the JD"]
 - "recommended_skills": ["List of 4-6 supplementary, preferred, or supportive skills from the JD"]
 - "nice_to_have_skills": ["List of 3-5 soft skills or bonus/optional skills mentioned in the JD"]
-- "salary_ranges": {
+- "salary_ranges": {{
     "US": "$Min - $Max (e.g. $80,000 - $130,000)",
     "UK": "£Min - £Max (e.g. £45,000 - £75,000)",
     "India": "₹Min - ₹Max (e.g. ₹6,00,000 - ₹15,00,000)",
     "Singapore": "S$Min - S$Max (e.g. S$60,000 - S$110,000)",
     "Malaysia": "RM3,000 - RM5,500/mo (Fresh Grad) | RM1,000 - RM2,000/mo (Intern)",
     "default": "$Min - $Max (e.g. $70,000 - $110,000)"
-  }
+  }}
 
-Ensure all listed skills are standard technological keywords or industry terms, NOT long sentences or noisy/generic phrases (like "excellent communication", "team player", "minimum 5 years experience", "coordinate with managers", "work hard"). Extract only clean, canonical skill names.
+STRICT SKILL EXTRACTION RULES — each skill MUST be:
+1. A canonical technology name, tool, framework, programming language, certification, or domain-specific methodology.
+   GOOD examples: "Python", "Power BI", "REST API", "AWS", "SQL", "Agile", "CI/CD", "SAP", "Tableau"
+2. Concise — 1 to 4 words maximum.
+
+NEVER include ANY of the following — these are automatic disqualifications:
+- Generic English words or adjectives: "Development", "Differences", "Communication", "Management", "Leadership", "Innovation", "Collaboration", "Various", "Others", "Description", "Employment", "Including", "Necessary", "Successful"
+- Abbreviation artifacts or shortcuts: "E.G.", "I.E.", "Etc.", "N/A", "E.g."
+- Prepositional phrases or company-name fragments: "At Deloitte", "In Malaysia", "For The Team", "Ernst Young", "Consulting Firm"
+- JD boilerplate / sentence fragments: "minimum 5 years", "excellent communication", "team player", "work independently", "responsible for", "coordinate with", "ability to", "fast learner"
+- Soft skills stated as generic traits (unless they are industry-standard certifications): "adaptability", "punctuality", "dedication", "motivation"
 
 Return ONLY a valid JSON object matching the requested structure. No markdown backticks, no extra text."""
 

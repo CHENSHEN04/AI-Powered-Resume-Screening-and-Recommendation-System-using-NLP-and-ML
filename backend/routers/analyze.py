@@ -29,45 +29,45 @@ async def analyze_resume(
     Upload and analyze a resume file (PDF/DOCX).
     If authenticated, auto-saves results to Supabase.
     """
-    
+
     # 1. Read File Content
     try:
         content = await file.read()
     except Exception as e:
         raise HTTPException(status_code=400, detail="Could not read file")
-        
+
     # 2. Validate
     is_valid, error_msg = validate_file(content, file.filename)
     if not is_valid:
         raise HTTPException(status_code=400, detail=error_msg)
-        
+
     # 3. Parse
     parser = ResumeParser()
     parse_result = parser.parse(content, file.filename)
     if not parse_result.success:
         raise HTTPException(status_code=422, detail=f"Parsing error: {parse_result.error}")
-        
+
     # 4. Extract
     extractor = SkillExtractor()
     skill_data = extractor.extract_skills(parse_result.text)
-    
+
     # 5. Classify
     classifier = JobClassifier()
     prediction = classifier.predict(parse_result.text)
-    
+
     # 6. Gap Analysis
     # Determine target role
     role_cats = extractor.map_to_category(skill_data["all_skills"])
     top_skill_cat = list(role_cats.keys())[0] if role_cats else "Unknown"
-    
+
     target_role = prediction["top_category"]
     if target_role == "Unknown" or str(target_role).isdigit():
         target_role = top_skill_cat
-        
+
     db = DatabaseManager()
     analyzer = GapAnalyzer(db)
     analysis = analyzer.analyze_gaps(skill_data["all_skills"], target_role)
-    
+
     # 7. Auto-save to database if user is authenticated
     auth_user = await get_user_from_token(authorization)
     if auth_user:
@@ -82,15 +82,18 @@ async def analyze_resume(
                 "match_score": analysis["match_percentage"],
                 "skills": [{"name": s, "category": "extracted"} for s in skill_data["all_skills"]],
             }
-            resume_id = db.save_resume_analysis(auth_user["id"], save_data)
+            # save_resume_analysis now returns (resume_id, error_message) instead of
+            # just resume_id, so a failed save is actually diagnosable from the logs.
+            db.sync_auth_session()
+            resume_id, save_err = db.save_resume_analysis(auth_user["id"], save_data)
             if resume_id:
                 logger.info(f"Saved analysis {resume_id} for user {auth_user['id']}")
             else:
-                logger.warning(f"Failed to save analysis for user {auth_user['id']}")
+                logger.warning(f"Failed to save analysis for user {auth_user['id']}: {save_err}")
         except Exception as e:
             logger.error(f"Error saving analysis: {e}")
             # Don't fail the request if saving fails — still return results
-    
+
     # 8. Construct Response
     return ResumeUploadResponse(
         filename=file.filename,

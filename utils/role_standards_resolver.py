@@ -8,6 +8,7 @@ deterministic fallback when AI is unavailable or too generic.
 
 import re
 import json
+import logging
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
@@ -49,35 +50,165 @@ RECOMMENDED_HINTS = (
 NICE_HINTS = ("bonus", "nice to have", "optional", "would be a plus")
 
 
+# ---------------------------------------------------------------------------
+# Noise-detection helpers
+# ---------------------------------------------------------------------------
+
+# Prepositions that start a phrase but are NOT skill names on their own
+_LEADING_PREPOSITIONS = {
+    "at", "in", "on", "of", "by", "for", "to", "with", "from", "into",
+    "about", "across", "along", "among", "around", "through", "during",
+    "before", "after", "under", "over", "between", "among", "within",
+    "without", "upon", "per", "via", "vs", "versus",
+}
+
+# Regex: abbreviation artifacts like "E.G.", "I.E.", "Etc.", "N.A.", "E.g.", "i.e."
+_ABBREV_ARTIFACT_RE = re.compile(r'^([A-Za-z]\.){2,}$', re.IGNORECASE)
+
+# Regex: company-name fragments that commonly slip through
+_COMPANY_NAME_RE = re.compile(
+    r'(deloitte|kpmg|pwc|ernst|accenture|mckinsey|bain|boston|'  
+    r'consulting|holdings|berhad|sdn\s*bhd|pte\s*ltd|inc\.|corp\.)',
+    re.IGNORECASE,
+)
+
+# Generic English words that look like skills but are NOT
+_GENERIC_ENGLISH_WORDS = {
+    # Job-description boilerplate
+    "development", "differences", "employment", "including", "necessary",
+    "successful", "minimum", "preferred", "required", "candidate",
+    "experience", "knowledge", "responsibilities", "requirements",
+    "qualifications", "description", "communication", "leadership",
+    "management", "organization", "collaboration", "creativity",
+    "flexibility", "innovation", "professionalism", "punctuality",
+    "reliability", "teamwork", "motivation", "dedication", "adaptability",
+    "initiative", "integrity", "accountability", "transparency", "others",
+    "various", "position", "location", "industry", "category", "salary",
+    "degree", "type", "company", "office", "workplace", "city", "state",
+    "country", "duties", "apply", "fresh", "intern", "internship", "action",
+    "champion", "enabler", "ensure", "enter", "steward", "timely",
+    "verification", "review", "approve", "monitor", "service", "quality",
+    "identify", "provide", "support", "assist", "business", "speaking",
+    "key", "submit", "resume", "application", "address", "task", "tasks",
+    "duty", "role", "job", "team", "staff", "employee", "ability",
+    "advanced", "common", "general", "basic", "must", "competency",
+    "criterion", "criteria", "process", "procedure", "standard", "practice",
+    "policy", "method", "strategy", "approach", "system", "program",
+    "project", "plan", "goal", "objective", "outcome", "deliverable",
+    "result", "impact", "value", "benefit", "advantage", "feature",
+    "function", "aspect", "element", "factor", "component", "module",
+    "section", "area", "field", "domain", "scope", "level", "phase",
+    "stage", "step", "part", "item", "point", "topic", "matter", "issue",
+    "problem", "challenge", "solution", "opportunity", "request",
+    "activity", "work", "effort", "resource", "tool", "technique",
+    "style", "mode", "format", "model", "pattern", "template", "structure",
+    "overview", "summary", "objective", "profile", "introduction",
+    "background", "education", "skills", "competencies", "technologies",
+    "framework", "languages", "tools", "platforms", "environments",
+    "other", "additional", "optional", "highly", "strongly", "good",
+    "excellent", "strong", "great", "well", "ability", "ability to", "psa",
+    # Common shorthand / abbreviation noise words
+    "etc", "etc.", "n/a", "n.a.", "na", "tbd", "tbc", "asap",
+    "we", "you", "our", "and", "or", "the", "a", "an", "with", "for",
+    "to", "of", "in", "on", "as", "is", "are", "be", "will", "work",
+    "about", "years", "analyses", "meeting minutes", "including import",
+    "assist in", "able to", "able", "where necessary", "experience with",
+    "responsible for", "key responsibilities", "nice to have",
+    "job description", "roles and responsibilities", "skills required",
+    "about the role", "role description", "minimum qualifications",
+    "preferred qualifications", "basic qualifications", "role summary",
+    "essential requirements", "apbs", "data management internship",
+    "diabetes", "kuala", "lumpur", "malaysia", "singapore", "kuala lumpur",
+}
+
+
 def _is_noise(value: str) -> bool:
+    """Return True when *value* is a noise word/phrase that should never be treated as a skill."""
     lower = value.lower().strip()
-    noise = {
-        "we", "you", "our", "and", "or", "the", "a", "an", "with", "for",
-        "to", "of", "in", "on", "as", "is", "are", "be", "will", "work",
-        "team", "role", "job", "candidate", "experience", "knowledge",
-        "skills", "requirements", "responsibilities", "about", "company",
-        "degree", "years", "minimum", "preferred", "required", "duties", 
-        "apply", "fresh", "responsibilities", "requirements", "qualification",
-        "qualifications", "employment", "type", "salary", "industry", 
-        "category", "position", "submit", "resume", "cv", "application",
-        "location", "address", "city", "state", "country", "office", "workplace",
-        "kuala", "lumpur", "malaysia", "singapore", "kuala lumpur", "role summary",
-        "essential requirements", "apbs", "data management internship", "diabetes",
-        "identify", "where necessary", "experience with", "responsible for", "able to",
-        "able", "advanced", "analyses",
-        "meeting minutes", "including import", "assist in", "business", "assist", "speaking",
-        "intern", "internship", "key", "key responsibilities", "provide", "support",
-        "action", "champion", "enabler", "ensure", "enter", "steward", "timely",
-        "verification", "review", "approve", "monitor", "service", "quality", "integrity",
-        "common", "general", "basic", "must", "nice to have", "competency", "employee",
-        "staff", "ability", "ability to", "psa",
-        # Structural noise headers and common phrases
-        "job description", "roles and responsibilities", "skills required", "about the role",
-        "role description", "minimum qualifications", "preferred qualifications", "basic qualifications"
-    }
+    # Always allow single-letter programming language abbreviations
     if lower in {"r", "c"}:
         return False
-    return lower in noise or len(lower) < 2
+    # Too short to be meaningful
+    if len(lower) < 2:
+        return True
+    # Known generic English words / JD boilerplate
+    if lower in _GENERIC_ENGLISH_WORDS:
+        return True
+    # Abbreviation artifacts: "E.G.", "I.E.", "Etc.", "N.A."
+    if _ABBREV_ARTIFACT_RE.match(value.strip()):
+        return True
+    # Preposition-led phrases: "At Deloitte", "In Malaysia", "For The"
+    first_word = lower.split()[0] if lower.split() else ""
+    if first_word in _LEADING_PREPOSITIONS:
+        return True
+    # Company-name fragments
+    if _COMPANY_NAME_RE.search(lower):
+        return True
+    return False
+
+
+# Tech/domain terms that should pass even when they are a single common word
+_TECH_WHITELIST = {
+    "python", "java", "javascript", "typescript", "html", "css", "sql",
+    "nosql", "postgresql", "mysql", "mongodb", "redis", "react", "angular",
+    "vue", "node", "express", "django", "flask", "fastapi", "spring",
+    "rest", "graphql", "api", "aws", "azure", "gcp", "docker", "kubernetes",
+    "terraform", "jenkins", "git", "github", "gitlab", "linux", "bash",
+    "powershell", "tensorflow", "pytorch", "pandas", "numpy", "tableau",
+    "figma", "jira", "agile", "scrum", "sap", "excel", "r", "c", "swift",
+    "kotlin", "go", "rust", "scala", "perl", "ruby", "matlab", "hadoop",
+    "spark", "kafka", "airflow", "dbt", "looker", "snowflake", "redshift",
+    "elasticsearch", "nginx", "apache", "ansible", "puppet", "chef",
+    "splunk", "wireshark", "nessus", "metasploit", "burp", "owasp",
+    "quickbooks", "xero", "myob", "sage", "odoo", "netsuite", "salesforce",
+    "hubspot", "zendesk", "photoshop", "illustrator", "indesign", "sketch",
+    "canva", "blender", "autocad", "solidworks", "revit", "catia",
+    "labview", "spss", "stata", "sas", "tableau", "powerbi",
+}
+
+
+def _is_valid_skill_name(skill: str) -> bool:
+    """
+    Single gate used everywhere before writing a skill string to the database
+    or into the standards dict. Returns True when the string looks like a
+    genuine skill/technology name.
+
+    Rejects:
+    - Noise words / JD boilerplate (_is_noise)
+    - Abbreviation artifacts (E.G., I.E., Etc.)
+    - Preposition-led phrases (At Deloitte, In Malaysia)
+    - Company-name fragments
+    - Phrases longer than 5 words (almost certainly a sentence fragment)
+    - Pure digit strings
+    - Empty / whitespace-only strings
+    """
+    if not skill or not skill.strip():
+        return False
+    cleaned = skill.strip()
+    # Too long: sentences are not skills
+    if len(cleaned.split()) > 5:
+        return False
+    # Pure digits
+    if cleaned.replace(" ", "").isdigit():
+        return False
+    lower = cleaned.lower()
+    # Always allow known tech whitelist terms even if they clash with generic words
+    if lower in _TECH_WHITELIST:
+        return True
+    # Run the full noise filter
+    if _is_noise(lower):
+        return False
+    # Abbreviation artifact
+    if _ABBREV_ARTIFACT_RE.match(cleaned):
+        return False
+    # Company-name fragment
+    if _COMPANY_NAME_RE.search(lower):
+        return False
+    # Preposition-led phrase
+    first_word = lower.split()[0] if lower.split() else ""
+    if first_word in _LEADING_PREPOSITIONS:
+        return False
+    return True
 
 
 
@@ -307,19 +438,26 @@ def extract_skill_candidates(text: str) -> List[str]:
     if regex:
         for match in regex.finditer(text_lower):
             skill = match.group(0).lower()
-            if not _is_noise(skill):
+            if _is_valid_skill_name(skill):
                 found.append(_canonical_skill(skill))
 
-    # Match true acronyms (all uppercase) to avoid false positives like "Duties" or "Apply"
+    # Match true acronyms (2+ uppercase chars) to avoid false positives like "Duties", "Apply"
     acronym_matches = re.findall(r"\b[A-Z][A-Z0-9+#./-]{1,8}\b", text)
-    found.extend(_canonical_skill(m) for m in acronym_matches if not _is_noise(m))
+    found.extend(_canonical_skill(m) for m in acronym_matches if _is_valid_skill_name(m))
 
     for chunk in re.split(r"[,;|()\n]", text):
         candidate = _clean_candidate(chunk)
-        if candidate:
+        if candidate and _is_valid_skill_name(candidate):
             found.append(candidate)
 
-    return [s for s in _dedupe(found) if not _is_noise(s)]
+    valid = [s for s in _dedupe(found) if _is_valid_skill_name(s)]
+    rejected = [s for s in _dedupe(found) if not _is_valid_skill_name(s)]
+    if rejected:
+        logging.getLogger(__name__).debug(
+            "extract_skill_candidates: rejected %d noise candidates: %s",
+            len(rejected), rejected[:20],
+        )
+    return valid
 
 
 def skill_mentioned_in_text(skill: str, text: str) -> bool:
@@ -400,47 +538,54 @@ def _bucket_for_line(line: str) -> str:
     return "recommended"
 
 
+# Verb/function words that can never start a valid skill name
+_STOP_START_WORDS = {
+    "identify", "assist", "provide", "support", "ensure", "perform", "develop",
+    "create", "design", "manage", "lead", "handle", "coordinate", "prepare",
+    "maintain", "collaborate", "work", "communicate", "report", "write", "read",
+    "speak", "analyze", "implement", "deliver", "drive", "track", "monitor",
+    "execute", "review", "approve", "evaluate", "assess", "recommend", "advise",
+    "facilitate", "participate", "contribute", "where", "when", "why", "how",
+    "who", "what", "which", "whose", "whom", "if", "whether", "although", "though",
+    "while", "during", "before", "after", "since", "until", "unless", "because",
+    "including", "excluding", "with", "without", "about", "against", "among",
+    "between", "through", "above", "below", "under", "over", "necessary", "required",
+    "preferred", "highly", "strongly", "good", "excellent", "strong", "basic",
+    "common", "general", "timely", "proper", "correct", "accurate", "successful",
+    "meeting", "minutes", "task", "tasks", "duty", "duties", "responsibility",
+    "responsibilities", "requirement", "requirements", "qualification", "qualifications",
+    "experience", "experiences", "we", "you", "our", "their", "his", "her", "my", "your",
+    "fresh", "freshly", "apply", "applying",
+} | _LEADING_PREPOSITIONS  # also block preposition-led phrases
+
+
 def _clean_candidate(chunk: str) -> Optional[str]:
     chunk = re.sub(r"^[\s\-*:\d.]+", "", chunk.strip())
     chunk = re.sub(r"\s+", " ", chunk)
     if not chunk or len(chunk) > 40:
         return None
     lower = chunk.lower()
-    if _is_noise(lower):
+    # Run full validity check (noise + preposition + company + abbreviation)
+    if not _is_valid_skill_name(chunk):
         return None
+    # Known dynamic skill — return canonical form immediately
     if lower in get_dynamic_common_skills():
         return _canonical_skill(lower)
-        
-    # Filter out chunks starting with common verbs or function words if not in DYNAMIC_COMMON_SKILLS
+    # Reject if it starts with a stop-start word
     words = lower.split()
-    if words:
-        start_word = words[0]
-        stop_starts = {
-            "identify", "assist", "provide", "support", "ensure", "perform", "develop",
-            "create", "design", "manage", "lead", "handle", "coordinate", "prepare",
-            "maintain", "collaborate", "work", "communicate", "report", "write", "read",
-            "speak", "analyze", "implement", "deliver", "drive", "track", "monitor",
-            "execute", "review", "approve", "evaluate", "assess", "recommend", "advise",
-            "facilitate", "participate", "contribute", "where", "when", "why", "how",
-            "who", "what", "which", "whose", "whom", "if", "whether", "although", "though",
-            "while", "during", "before", "after", "since", "until", "unless", "because",
-            "including", "excluding", "with", "without", "about", "against", "among",
-            "between", "through", "above", "below", "under", "over", "necessary", "required",
-            "preferred", "highly", "strongly", "good", "excellent", "strong", "basic",
-            "common", "general", "timely", "proper", "correct", "accurate", "successful",
-            "meeting", "minutes", "task", "tasks", "duty", "duties", "responsibility",
-            "responsibilities", "requirement", "requirements", "qualification", "qualifications",
-            "experience", "experiences", "we", "you", "our", "their", "his", "her", "my", "your",
-            "fresh", "freshly", "apply", "applying", "where necessary", "necessary steps"
-        }
-        if start_word in stop_starts:
-            return None
-            
-    if re.fullmatch(r"[A-Z][A-Za-z0-9+#./-]*(?:\s[A-Z][A-Za-z0-9+#./-]*){0,2}", chunk):
-        return chunk
+    if words and words[0] in _STOP_START_WORDS:
+        return None
+    # Accept tech/symbol tokens (e.g. "CI/CD", "C++", "vue.js")
     if re.fullmatch(r"[a-zA-Z0-9+#./-]+(?:\s[a-zA-Z0-9+#./-]+){0,1}", chunk):
-        if any(c in chunk for c in "+#./-") or (len(chunk) >= 3 and not _is_noise(lower)):
+        if any(c in chunk for c in "+#./-") or (len(chunk) >= 3):
             return _canonical_skill(chunk)
+    # Accept title-case multi-word phrases (max 3 words) that are NOT all generic words
+    if re.fullmatch(r"[A-Z][A-Za-z0-9+#./-]*(?:\s[A-Z][A-Za-z0-9+#./-]*){0,2}", chunk):
+        # Reject if ALL words are generic English (e.g. "At Deloitte", "For The Team")
+        generic_word_count = sum(1 for w in words if w in _GENERIC_ENGLISH_WORDS or w in _LEADING_PREPOSITIONS)
+        if generic_word_count == len(words):
+            return None
+        return chunk
     return None
 
 
