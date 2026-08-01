@@ -1,8 +1,8 @@
 # Deep Career Coach
 ### AI-Powered Resume Screening and Recommendation System using NLP and ML
 
-> **Capstone Project 2 — Final Report** | Bachelor of Information Systems (Honours) (Data Analytics), Sunway University
-> **Author**: Chen Shen (22065833) · **Supervisor**: Prof. Angela Lee Siew Hoong · **Semester**: September 2025
+> **Capstone Project — Final Report** 
+
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://chenshen04-ai-powered-resume-screening-and-recommend-app-dnjfw4.streamlit.app/)
 
@@ -38,9 +38,9 @@ The system implements a **Three-Layer Intelligent Processing Pipeline**:
 ┌────────────────────────────────────────────────────────────────────────┐
 │ 2. Hybrid Classification & Extraction Layer                            │
 │    Stream A (Statistical/Lexical)      Stream B (Semantic/Contextual)  │
-│    - Calibrated Linear SVM             - all-MiniLM-L6-v2               │
-│      over 5,000-feature TF-IDF           SentenceTransformer            │
-│      vector space (43 job roles)         (cosine-similarity ranking)    │
+│    - Calibrated Linear SVM             - all-MiniLM-L6-v2              │
+│      over 5,000-feature TF-IDF           SentenceTransformer           │
+│      vector space (43 job roles)         (cosine-similarity ranking)   │
 │    - spaCy NER + EntityRuler pattern matcher (skill/entity extraction) │
 └────────────────────────────────────────────────────────────────────────┘
           │
