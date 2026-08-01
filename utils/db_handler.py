@@ -6,7 +6,7 @@ Handles connection and queries to Supabase.
 
 import streamlit as st
 from supabase import create_client, Client
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 import os
 from pathlib import Path
 
@@ -74,30 +74,64 @@ class DatabaseManager:
     """
     Manages Supabase client and database operations.
     """
-    
+
     def __init__(self):
         self.supabase: Optional[Client] = self._init_client()
         self.sync_auth_session()
 
     def sync_auth_session(self):
-        """Sync active session access token with PostgREST headers to guarantee RLS works."""
+        """
+        Sync active session access token with PostgREST headers to guarantee RLS works.
+
+        NOTE: an earlier version of this method also tried to proactively call
+        `auth.refresh_session()` here whenever the token looked close to expiry, to
+        work around RLS writes failing on a stale token. That was reverted — Supabase
+        refresh tokens are single-use/rotating, and calling refresh_session() outside
+        of a carefully-persisted storage layer risks consuming a refresh token without
+        durably saving its replacement, which trips Supabase's reuse-detection and can
+        invalidate the whole session (a much worse failure than the one it was meant to
+        fix). This method now just re-applies whatever access token the client already
+        holds, same as before. Expiry is still detected (see `session_is_expired`) so
+        callers can show the user a clear "please log out and back in" message instead
+        of a silent/generic failure.
+        """
         if not self.supabase: return
         try:
             session = self.supabase.auth.get_session()
             if session:
                 if hasattr(session, "access_token") and session.access_token:
                     self.supabase.postgrest.auth(session.access_token)
-                elif isinstance(session, dict) and "access_token" in session and session["access_token"]:
+                elif isinstance(session, dict) and session.get("access_token"):
                     self.supabase.postgrest.auth(session["access_token"])
         except Exception:
             pass
-        
+
+    def session_is_expired(self) -> bool:
+        """
+        Read-only check for whether the current session's access token has expired.
+        Does NOT attempt to refresh anything — safe to call anytime, purely informational
+        (e.g. to decide whether to tell the user "please log out and back in").
+        """
+        if not self.supabase:
+            return False
+        try:
+            import time
+            session = self.supabase.auth.get_session()
+            if not session:
+                return False
+            expires_at = getattr(session, "expires_at", None)
+            if expires_at is None and isinstance(session, dict):
+                expires_at = session.get("expires_at")
+            return bool(expires_at) and expires_at < time.time()
+        except Exception:
+            return False
+
     def _init_client(self) -> Optional[Client]:
         """Initialize Supabase client using secrets."""
         try:
             url = _secret("SUPABASE_URL") or _secret("url")
             key = _secret("SUPABASE_ANON_KEY") or _secret("anon_key")
-            
+
             # If still None, try to read st.secrets["supabase"] explicitly
             if not url or not key:
                 try:
@@ -105,12 +139,12 @@ class DatabaseManager:
                     key = st.secrets["supabase"]["anon_key"]
                 except Exception:
                     pass
-                    
+
             if not url or not key:
                 import logging
                 logging.getLogger(__name__).warning("Supabase URL or Key not found in secrets.")
                 return None
-                
+
             from supabase import ClientOptions
             options = ClientOptions(
                 postgrest_client_timeout=5.0,
@@ -128,7 +162,7 @@ class DatabaseManager:
 
 
     # --- Authentication Methods ---
-    
+
     def sign_up(self, email: str, password: str, full_name: str):
         """Register a new user."""
         if not self.supabase: return None, "Database not connected"
@@ -136,8 +170,8 @@ class DatabaseManager:
             # Pass full_name in metadata so the Trigger can use it
             options = {"data": {"full_name": full_name}}
             res = self.supabase.auth.sign_up({
-                "email": email, 
-                "password": password, 
+                "email": email,
+                "password": password,
                 "options": options
             })
             if res and hasattr(res, "session") and res.session:
@@ -208,7 +242,7 @@ class DatabaseManager:
     def create_profile(self, user_id: str, email: str, full_name: str = ""):
         """Create or update user profile."""
         if not self.supabase: return
-        
+
         data = {
             "id": user_id,
             "email": email,
@@ -217,10 +251,10 @@ class DatabaseManager:
         }
         return self.supabase.table("profiles").upsert(data).execute()
 
-    def save_resume_analysis(self, user_id: str, analysis_data: Dict[str, Any]):
+    def save_resume_analysis(self, user_id: str, analysis_data: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
         """
         Save resume analysis results to database.
-        
+
         analysis_data expects:
         - filename
         - storage_path
@@ -230,9 +264,16 @@ class DatabaseManager:
         - predicted_role
         - match_score
         - skills (list of dicts with name, category)
+
+        Returns:
+            (resume_id, error_message) — exactly one of the two is None/non-None.
+            The real Supabase/Postgres error message is now returned instead of
+            being swallowed, so a failed save is actually diagnosable (expired
+            session, RLS violation, bad column type, etc.) instead of showing a
+            generic "please try again" with no way to tell what went wrong.
         """
-        if not self.supabase: return
-        
+        if not self.supabase: return None, "Not connected to the database."
+
         # Ensure native Python types to prevent JSON serialization errors with numpy types
         try:
             resume_entry = {
@@ -248,38 +289,51 @@ class DatabaseManager:
         except Exception as cast_err:
             import logging
             logging.error(f"Failed to cast resume analysis data to native types: {cast_err}")
-            return None
-        
+            return None, f"Invalid analysis data ({cast_err})"
+
         try:
             response = self.supabase.table("resumes").insert(resume_entry).execute()
-        
+
             if response.data:
                 resume_id = response.data[0]["id"]
-                
+
                 # 2. Insert Skills (inside independent try-except to avoid aborting the save if RLS fails)
                 try:
                     skills_entries = [
                         {"resume_id": resume_id, "skill_name": str(s["name"]), "category": str(s["category"])}
                         for s in analysis_data.get("skills", [])
                     ]
-                    
+
                     if skills_entries:
                         self.supabase.table("resume_skills").insert(skills_entries).execute()
                 except Exception as skill_err:
                     import logging
                     logging.getLogger(__name__).warning(f"Failed to save resume skills keyword detail: {skill_err}")
-                    
-                return resume_id
+
+                return resume_id, None
+            return None, "Insert succeeded but returned no row — check Supabase RLS SELECT policy on 'resumes'."
         except Exception as e:
             import logging
             logging.error(f"ERROR SAVING RESUME ANALYSIS: {e}")
-            return None
-        return None
+            # Try to surface the underlying PostgREST error body (message/hint/code)
+            # when available — this is what actually tells you *why* (e.g. "JWT
+            # expired", "new row violates row-level security policy", etc.).
+            detail = str(e)
+            for attr in ("message", "args"):
+                try:
+                    val = getattr(e, attr, None)
+                    if val:
+                        detail = str(val)
+                        break
+                except Exception:
+                    pass
+            return None, detail
+        return None, "Unknown error while saving."
 
     def get_user_history(self, user_id: str) -> List[Dict]:
         """Fetch analysis history for a user."""
         if not self.supabase: return []
-        
+
         try:
             return self.supabase.table("resumes")\
                 .select("*, resume_skills(*)")\
@@ -308,10 +362,10 @@ class DatabaseManager:
         Returns None if this is the first upload.
         """
         if not self.supabase: return None
-        
+
         try:
             # Fetch most recent matching filename
-            # Note: This logic assumes we haven't inserted the NEW one yet, 
+            # Note: This logic assumes we haven't inserted the NEW one yet,
             # OR we need to handle ignoring the current one if it's already inserted.
             # Best pattern: Call this BEFORE inserting the new one.
             response = self.supabase.table("resumes")\
@@ -321,7 +375,7 @@ class DatabaseManager:
                 .order("created_at", desc=True)\
                 .limit(1)\
                 .execute()
-            
+
             if response.data:
                 return response.data[0]
             return None
@@ -334,37 +388,37 @@ class DatabaseManager:
         Returns a dict structure compatible with the GapAnalyzer.
         """
         if not self.supabase: return None
-        
+
         try:
             # Normalize input to slug (simple approach)
             slug = role_slug_or_title.lower().replace(" ", "_").replace("/", "_")
-            
+
             # 1. Fetch Job Category
             # We try exact match on slug first
             cat_res = self.supabase.table("job_categories")\
                 .select("*")\
                 .eq("slug", slug)\
                 .execute()
-                
+
             if not cat_res.data:
                 # Fallback: try to find by title ilike
                 cat_res = self.supabase.table("job_categories")\
                     .select("*")\
                     .ilike("title", role_slug_or_title)\
                     .execute()
-                    
+
             if not cat_res.data:
                 return None
-            
+
             cat_data = cat_res.data[0]
             cat_id = cat_data["id"]
-            
+
             # 2. Fetch Skills using separate robust queries to avoid PostgREST relationship caching issues
             standards_res = self.supabase.table("market_standards")\
                 .select("importance_level, skill_id, difficulty")\
                 .eq("job_category_id", cat_id)\
                 .execute()
-                
+
             result = {
                 "title": cat_data["title"],
                 "weights": cat_data.get("weights", {}),
@@ -374,7 +428,7 @@ class DatabaseManager:
                 "advanced_skills": [],
                 "skill_difficulties": {}
             }
-            
+
             if standards_res.data:
                 skill_ids = [item["skill_id"] for item in standards_res.data if item.get("skill_id")]
                 if skill_ids:
@@ -392,7 +446,7 @@ class DatabaseManager:
                                 difficulty = item.get("difficulty")
                                 if difficulty:
                                     result["skill_difficulties"][skill_name] = difficulty
-                                
+
                                 if importance == "required":
                                     result["required_skills"].append(skill_name)
                                 elif importance == "recommended":
@@ -401,7 +455,7 @@ class DatabaseManager:
                                     result["nice_to_have"].append(skill_name)
                                 elif importance == "advanced":
                                     result["advanced_skills"].append(skill_name)
-            
+
             return result
         except Exception as e:
             # st.error(f"DB Error fetching standards: {e}")
@@ -453,7 +507,7 @@ class DatabaseManager:
                 advanced_skills = []
             if skill_difficulties is None:
                 skill_difficulties = {}
-                
+
             all_skills = (
                 [(s.strip(), "required")     for s in required_skills     if s and s.strip()] +
                 [(s.strip(), "recommended")  for s in recommended_skills  if s and s.strip()] +
@@ -547,7 +601,7 @@ class DatabaseManager:
                     "title": role_title,
                     "weights": {"required": 1.0, "recommended": 0.6, "nice_to_have": 0.3}
                 }).execute()
-            
+
             self.supabase.table("role_salaries").upsert({
                 "role_slug": role_slug.lower().strip(),
                 "salary_data": salary_data
@@ -562,24 +616,24 @@ class DatabaseManager:
         Returns a dict {skill_name: [resources]}.
         """
         if not self.supabase or not skill_names: return {}
-        
+
         try:
             # Resolve skills to IDs first to avoid PostgREST relationship caching joins
             skills_res = self.supabase.table("skills")\
                 .select("id, name")\
                 .in_("name", skill_names)\
                 .execute()
-                
+
             output = {}
             if skills_res.data:
                 skill_id_map = {row["id"]: row["name"] for row in skills_res.data}
                 skill_ids = list(skill_id_map.keys())
-                
+
                 res = self.supabase.table("learning_resources")\
                     .select("title, url, resource_type, difficulty, skill_id")\
                     .in_("skill_id", skill_ids)\
                     .execute()
-                    
+
                 for item in res.data:
                     s_id = item.get("skill_id")
                     if s_id in skill_id_map:
@@ -613,7 +667,7 @@ class DatabaseManager:
                 if not sk2.data:
                     return False
                 skill_id = sk2.data[0]["id"]
-            
+
             # 2. Save each resource
             for res in resources:
                 # Check if resource already exists
@@ -637,14 +691,14 @@ class DatabaseManager:
     def log_system_event(self, level: str, message: str, details: Dict[str, Any] = None):
         """
         Log a system event to the database.
-        
+
         Args:
             level: 'INFO', 'WARNING', 'ERROR'
             message: Description of the event
             details: Optional JSON serializable dictionary
         """
         if not self.supabase: return
-        
+
         try:
             entry = {
                 "level": level,
@@ -652,7 +706,7 @@ class DatabaseManager:
                 "details": details or {},
                 # "created_at": "now()" -- defaults in DB
             }
-            # Fire and forget - don't block main thread if possible, 
+            # Fire and forget - don't block main thread if possible,
             # though supabase-py is sync by default unless using async client.
             self.supabase.table("system_logs").insert(entry).execute()
         except Exception as e:
@@ -666,13 +720,13 @@ class DatabaseManager:
         """
         if not self.supabase or not role_slug:
             return None
-            
+
         try:
             res = self.supabase.table("role_salaries")\
                 .select("salary_data")\
                 .eq("role_slug", role_slug.lower().strip())\
                 .execute()
-                
+
             if res.data:
                 return res.data[0].get("salary_data")
             return None

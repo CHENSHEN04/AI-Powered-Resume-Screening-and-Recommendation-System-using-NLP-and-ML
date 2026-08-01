@@ -101,7 +101,8 @@ def _sync_session_analysis_to_db(db, user_id):
         skill_data = st.session_state["skill_data"]
         
         # Save to database
-        db.save_resume_analysis(user_id, {
+        db.sync_auth_session()
+        res_id, save_err = db.save_resume_analysis(user_id, {
             "filename": filename,
             "storage_path": f"resumes/{user_id}/{filename}",
             "parsed_text": parse_result.text,
@@ -111,7 +112,13 @@ def _sync_session_analysis_to_db(db, user_id):
             "match_score": analysis["match_percentage"],
             "skills": [{"name": s, "category": "extracted"} for s in skill_data["all_skills"]]
         })
-        st.toast("💾 Guest resume analysis successfully saved to your account!", icon="📥")
+        if res_id:
+            st.toast("💾 Guest resume analysis successfully saved to your account!", icon="📥")
+        else:
+            # Previously this always showed a success toast even when the save
+            # silently failed. Now we surface the real reason so it's actually
+            # diagnosable instead of just disappearing.
+            st.toast(f"⚠️ Couldn't save your guest analysis to your account: {save_err}", icon="⚠️")
 
 
 
@@ -684,11 +691,24 @@ def _guess_target_role(file_bytes: bytes, filename: str, jd_text: str, known_rol
     if no confident guess could be made (dropdown then falls back to its
     default first option).
 
-    Priority:
-      1. Job description title/body matched against known role titles
-         (JD is the strongest signal of the *targeted* role, when provided).
-      2. Resume text classified via the trained SVM/BERT classifier.
-      3. Resume skills mapped to the closest known role category.
+    Priority (IMPORTANT — this order was corrected after a regression report):
+      1. Resume text classified via the trained SVM/BERT classifier — this is
+         the exact same signal `_run_analysis_pipeline` has always used to pick
+         a role when none is set, so it reproduces the previously-correct
+         behavior exactly.
+      2. Resume skills mapped to the closest known role category — same
+         fallback the pipeline already used.
+      3. Job description text matched against known role titles — used ONLY
+         as a last resort when the resume gives no usable signal at all, and
+         only above a high confidence threshold.
+
+    An earlier version tried the JD-title match FIRST for every analysis. That
+    was a mistake: comparing a short JD excerpt's embedding against a list of
+    short role-title embeddings is a noisy, uncalibrated signal, and it was
+    overriding an already-correct classifier prediction — causing the same JD
+    that used to produce the right role to suddenly produce a wrong one. The
+    classifier is the proven signal; JD matching is now just a tiebreaker for
+    when the resume alone isn't enough to go on.
     """
     if not known_roles:
         return None
@@ -707,19 +727,8 @@ def _guess_target_role(file_bytes: bytes, filename: str, jd_text: str, known_rol
     except Exception:
         pass
 
-    # 1. Match the JD text/title against known role titles.
-    if jd_text and jd_text.strip():
-        try:
-            from utils.semantic_matcher import SemanticMatcher
-            matcher = SemanticMatcher()
-            first_lines = "\n".join(jd_text.strip().splitlines()[:5])
-            best_slug, score = matcher.find_best_match(first_lines or jd_text[:300], candidates)
-            if best_slug and score > 0.55:
-                return best_slug
-        except Exception:
-            pass
-
-    # 2. Classifier prediction from resume text.
+    # 1. Classifier prediction from resume text (primary signal — matches the
+    #    logic `_run_analysis_pipeline` has always used).
     if resume_text:
         try:
             from utils.classifier import JobClassifier
@@ -738,7 +747,7 @@ def _guess_target_role(file_bytes: bytes, filename: str, jd_text: str, known_rol
         except Exception:
             pass
 
-        # 3. Fall back to skill-category mapping.
+        # 2. Fall back to skill-category mapping.
         try:
             extractor = SkillExtractor()
             skill_data = extractor.extract_skills(resume_text)
@@ -748,6 +757,21 @@ def _guess_target_role(file_bytes: bytes, filename: str, jd_text: str, known_rol
                 top_skill_cat = list(role_cats.keys())[0]
                 if top_skill_cat in candidates:
                     return top_skill_cat
+        except Exception:
+            pass
+
+    # 3. Last resort only: match the JD text against known role titles. Requires
+    #    a much higher confidence bar (0.75 vs. the old 0.55) since this signal
+    #    is noisier and should never casually override a resume-based guess —
+    #    at this point we only reach here because the resume gave us nothing.
+    if jd_text and jd_text.strip():
+        try:
+            from utils.semantic_matcher import SemanticMatcher
+            matcher = SemanticMatcher()
+            first_lines = "\n".join(jd_text.strip().splitlines()[:5])
+            best_slug, score = matcher.find_best_match(first_lines or jd_text[:300], candidates)
+            if best_slug and score > 0.75:
+                return best_slug
         except Exception:
             pass
 
@@ -1564,7 +1588,7 @@ def render_dashboard_stage():
                     parse_result = st.session_state.get("parse_result")
                     resume_text = parse_result.text if parse_result else ""
                     
-                    res_id = db.save_resume_analysis(user.id, {
+                    res_id, save_err = db.save_resume_analysis(user.id, {
                         "filename": filename,
                         "storage_path": f"resumes/{user.id}/{filename}",
                         "parsed_text": resume_text,
@@ -1578,7 +1602,12 @@ def render_dashboard_stage():
                         st.toast("💾 Analysis successfully saved to your history!", icon="📥")
                         st.success("💾 Analysis saved successfully!")
                     else:
-                        st.error("Failed to save analysis. Please try again.")
+                        # Show the real error instead of a generic message. Common
+                        # causes: an expired session (try logging out and back in),
+                        # or a Supabase RLS policy rejecting the write.
+                        st.error(f"Failed to save analysis: {save_err or 'Unknown error'}")
+                        if save_err and ("jwt" in save_err.lower() or "expired" in save_err.lower() or "row-level security" in save_err.lower()):
+                            st.info("💡 This usually means your login session has expired. Try logging out and back in, then save again.")
 
     if jd_text:
         st.caption("📋 Analysis based on your provided job description")
@@ -1626,28 +1655,134 @@ def render_dashboard_stage():
         </div>
         """, unsafe_allow_html=True)
 
+    st.caption(
+        "🛈 **Match Score** is your overall fit for this role (full breakdown below). "
+        "**SVM Confidence** is a separate, smaller signal — how sure our AI classifier is "
+        "that your resume reads as a *typical* profile for this exact job category. It's "
+        "completely normal for this number to be low, even near 0%, if you're early-career, "
+        "self-taught, or coming from a different field — it only makes up 10% of your Match "
+        "Score, so it won't sink an otherwise strong application on its own."
+    )
+
+    # ── Encouragement banner ──
+    # A low score can easily read as "don't bother applying" to a job seeker, especially a
+    # fresh graduate — which isn't the intent. Frame it as a starting point, not a verdict.
+    if score < 55:
+        st.info(
+            "🌱 **A low score doesn't mean you shouldn't apply.** It means there are specific, "
+            "fixable gaps between your resume's wording and this job description — not that "
+            "you lack potential. Many employers hiring for entry-level and internship roles "
+            "weigh trainability and growth just as much as an exact keyword match. Use the "
+            "roadmap and learning paths below to close the biggest gaps, then decide."
+        )
+    elif score < 80:
+        st.info(
+            "✅ **You already have a solid foundation for this role.** The breakdown below "
+            "shows exactly which areas would push your profile from good to great — you don't "
+            "need a perfect score to be a competitive applicant."
+        )
+
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ── Score component breakdown ──
     if score_result:
+        comps = score_result["component_scores"]
+        comps_map = score_result.get("component_scores", {})
+        # De-weight each component back to its own 0–100% scale (i.e. "how well did I do
+        # on JUST this dimension"), since showing the raw weighted-points value next to a
+        # "(10%)" label made it look like a score had collapsed from 10% down to 0.6%,
+        # when really 0.6 is just 6% of that dimension's own 10-point ceiling.
+        bert_val  = comps_map.get("bert_semantic", 0)   / 0.5
+        skill_val = comps_map.get("skill_overlap", 0)   / 0.3
+        svm_val   = comps_map.get("svm_confidence", 0)  / 0.1
+        edu_val   = comps_map.get("education_match", 0) / 0.1
+
+        # Build a plain-language "why" for each component from the actual numbers behind
+        # it — not just a generic definition. This is what actually answers "why did I
+        # get 10 out of 10 here but 0.6 out of 10 there?" for someone with no ML background.
+        n_matched = len(matched_skills)
+        n_total_skills = len(matched_skills) + len(missing_skills)
+
+        if bert_val >= 80:
+            bert_reason = "Your resume's overall wording and structure closely mirror how this job description is written. 🟢"
+        elif bert_val >= 55:
+            bert_reason = "Your resume touches on similar themes as the job description, but uses noticeably different wording/phrasing in places. 🟡"
+        else:
+            bert_reason = "Your resume's phrasing diverges a lot from this job description's language. This is about *wording*, not your actual ability — try mirroring some of the JD's own terms. 🔴"
+
+        if n_total_skills == 0:
+            skill_reason = "No specific skills were listed in the job description to compare against, so this defaulted to a neutral score."
+        elif skill_val >= 80:
+            skill_reason = f"You matched {n_matched} of {n_total_skills} skills this employer explicitly listed. 🟢"
+        elif skill_val >= 40:
+            skill_reason = f"You matched {n_matched} of {n_total_skills} listed skills — check the Skill Gaps tab below for exactly which ones are missing. 🟡"
+        else:
+            skill_reason = f"You matched only {n_matched} of {n_total_skills} listed skills. Most of these gaps are learnable — see the Learning Plan tab for where to start. 🔴"
+
+        role_display_name = target_role.replace("_", " ").title() if target_role else "this role"
+        if svm_val >= 60:
+            svm_reason = f"Your resume reads as a strong statistical match for a typical **{role_display_name}** profile. 🟢"
+        elif svm_val >= 25:
+            svm_reason = f"Your resume partially resembles a typical **{role_display_name}** profile, but has some non-standard elements. 🟡"
+        else:
+            svm_reason = f"Your resume doesn't closely resemble the *typical* **{role_display_name}** resume our model was trained on — very common for students, self-taught, and career-switching candidates. It's not a judgment of your skill, and it's only 10% of your score. 🔴"
+
+        if edu_val >= 90:
+            edu_reason = "Your listed education meets (or the job description didn't strictly require a specific level for) what's expected. 🟢"
+        elif edu_val >= 45:
+            edu_reason = "Your education is one step below what's typically expected for this role — usually a minor factor, not disqualifying. 🟡"
+        elif edu_val >= 25:
+            edu_reason = "We couldn't clearly detect your education level from the resume text — this is often just a formatting issue. Add a clearly labeled **Education** section with your degree name. 🔴"
+        else:
+            edu_reason = "Your detected education level is below what this job description typically expects. 🔴"
+
         with st.expander("⚖️ Score Breakdown (How this was calculated)", expanded=False):
-            comps = score_result["component_scores"]
+            st.caption(
+                "Each metric below is scored 0–100% on its own merits, then multiplied by its "
+                "weight to build your final Match Score. A low % in one area only costs you "
+                "that area's weight — it doesn't drag the others down."
+            )
             sc1, sc2, sc3, sc4 = st.columns(4)
-            sc1.metric("Profile Alignment (50%)", f"{comps['bert_semantic']:.1f}%")
-            sc2.metric("Skills Match (30%)", f"{comps['skill_overlap']:.1f}%")
-            sc3.metric("Industry Accuracy (10%)", f"{comps['svm_confidence']:.1f}%")
-            sc4.metric("Academic Alignment (10%)", f"{comps['education_match']:.1f}%")
-            st.caption("Final score = Alignment×50% + Skills Match×30% + Industry Accuracy×10% + Academic Alignment×10%")
-            
+            sc1.metric(
+                "Profile Alignment", f"{bert_val:.0f}%",
+                help="How closely the overall wording and content of your resume semantically matches the job description. Worth 50% of your final score — the single biggest factor.",
+            )
+            sc1.caption(f"= {comps['bert_semantic']:.1f} of 50 pts")
+            sc2.metric(
+                "Skills Match", f"{skill_val:.0f}%",
+                help="The share of the job description's specific listed skills that were found in your resume. Worth 30% of your final score.",
+            )
+            sc2.caption(f"= {comps['skill_overlap']:.1f} of 30 pts")
+            sc3.metric(
+                "Role Classifier Confidence", f"{svm_val:.0f}%",
+                help="The same figure as 'SVM Confidence' above — how sure our AI classifier is that your resume reads as a typical fit for this job category. Often naturally low for career-switchers or entry-level applicants. Worth only 10% of your final score.",
+            )
+            sc3.caption(f"= {comps['svm_confidence']:.1f} of 10 pts")
+            sc4.metric(
+                "Academic Alignment", f"{edu_val:.0f}%",
+                help="Whether your listed education level meets or exceeds what the job description asks for. Worth 10% of your final score.",
+            )
+            sc4.caption(f"= {comps['education_match']:.1f} of 10 pts")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("**Why these scores? →**")
+            r1, r2, r3, r4 = st.columns(4)
+            r1.caption(bert_reason)
+            r2.caption(skill_reason)
+            r3.caption(svm_reason)
+            r4.caption(edu_reason)
+
+            st.caption("Final score = Profile Alignment×50% + Skills Match×30% + Role Classifier Confidence×10% + Academic Alignment×10%")
+            st.success(
+                "🌱 A weak score in any one category is common and rarely disqualifying by itself. "
+                "Nothing here is a verdict on whether you should apply — it's a checklist. Use it to "
+                "polish your resume's wording, close a skill gap or two, then apply. You can always "
+                "run a **new analysis** after editing your resume to see your score improve."
+            )
+
         # Build dynamic roadmap items list
         roadmap_items = []
-        
-        comps_map = score_result.get("component_scores", {})
-        bert_val = comps_map.get("bert_semantic", 0) / 0.5
-        skill_val = comps_map.get("skill_overlap", 0) / 0.3
-        svm_val = comps_map.get("svm_confidence", 0) / 0.1
-        edu_val = comps_map.get("education_match", 0) / 0.1
-        
+
         if bert_val < 80:
             roadmap_items.append(f"""<li style="margin-bottom: 1.3rem; padding-bottom: 1.0rem; border-bottom: 1px solid rgba(255,255,255,0.06);">
 <div style="font-weight: 700; color: #FAFAFA; font-size: 1.1rem; margin-bottom: 0.3rem;">🧠 1. Boost Profile & Job Alignment (Current Score: {bert_val:.1f}% | 50% weight)</div>
@@ -1728,11 +1863,34 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
     if jd_match and jd_match.get("section_scores"):
         with st.expander("📊 Section-Level Alignment Scores", expanded=True):
             st.markdown("""
-            This chart displays how closely each distinct section of your resume (Education, Experience, Skills, and Summary) semantically aligns with the context and intent of the Job Description. **Higher/greener bars indicate stronger relevance and a closer contextual match to the employer's expectations.**
+            For each resume section, an AI language model compares your wording against the job description and scores how closely the *meaning* overlaps — 🟢 green means strong overlap, 🔴 red means weak overlap.
             """)
-            
+            st.caption(
+                "🛈 **How this score is calculated:** we split both your resume and the job "
+                "posting into sections (Education, Experience, Skills, Summary), convert each "
+                "section's text into a numeric representation of its *meaning* using an AI "
+                "language model, then measure how close your section's meaning is to the job "
+                "posting's version of that section — as a percentage. It's a wording/context "
+                "match, not a judgment of your ability. A low bar usually means your resume "
+                "phrases things differently than the job posting does — e.g. it says \"led a "
+                "team project\" and the JD says \"demonstrated leadership\" — not that the "
+                "experience is missing or wrong. It's also normal for **Experience** to score "
+                "lower than other sections if you're an entry-level or student applicant and the "
+                "JD is written for someone with several years on the job — that gap closes "
+                "naturally as you gain experience, and doesn't mean you shouldn't apply now."
+            )
+
             section_scores = jd_match["section_scores"]
-            
+
+            # Short, concrete fix for each section — shown only where it's actually needed,
+            # so this reads as a checklist instead of another number with no next step.
+            section_tips = {
+                "skills": "List the exact skill names from the posting (not just synonyms) in a dedicated Skills section.",
+                "experience": "Rework 2–3 bullet points using the JD's own action verbs and terms — e.g. if it says \"led\", don't write \"helped with\".",
+                "education": "Add a clearly labeled Education heading near the top with your degree, major, and institution.",
+                "summary": "Open with a 2–3 sentence summary that echoes the job title and the JD's top 1–2 requirements.",
+            }
+
             # Draw beautiful custom HTML bar chart
             bars_html = ""
             for sec, val in section_scores.items():
@@ -1747,14 +1905,20 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
                     color = f"#{r:02X}{g:02X}{b:02X}"
                 else:
                     color = "#FF6584" # 🔴 Weak Red
-                    
+
                 height_pct = max(val, 5) # Ensure visible bar
-                
+
                 # Convert hex to RGB values for gradient shadow
                 r_val = int(color[1:3], 16)
                 g_val = int(color[3:5], 16)
                 b_val = int(color[5:7], 16)
-                
+
+                tip = section_tips.get(str(sec).lower().strip(), "")
+                tip_html = (
+                    f"""<span style="color: #A1A1AA; font-size: 0.78rem; margin-top: 4px; text-align: center; line-height: 1.3; display: block;">💡 {tip}</span>"""
+                    if val < 80 and tip else ""
+                )
+
                 bars_html += f"""<div style="display: flex; flex-direction: column; align-items: center; width: 22%;">
 <div style="height: 220px; width: 100%; display: flex; align-items: flex-end; background: rgba(255,255,255,0.03); border-radius: 8px; position: relative;">
 <div style="height: {height_pct}%; width: 100%; background: linear-gradient(180deg, {color}, rgba({r_val}, {g_val}, {b_val}, 0.1)); border-radius: 6px; box-shadow: 0 0 15px rgba({r_val}, {g_val}, {b_val}, 0.3); transition: all 0.3s ease;">
@@ -1762,15 +1926,17 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
 </div>
 </div>
 <span style="color: #FAFAFA; font-weight: 600; font-size: 1rem; margin-top: 10px; text-transform: capitalize; text-align: center;">{sec}</span>
+{tip_html}
 </div>"""
-                
+
             st.markdown(f"""<div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 2rem 1.5rem 1.5rem 1.5rem; margin-top: 1rem;">
-<div style="display: flex; justify-content: space-between; align-items: flex-end; height: 260px;">
+<div style="display: flex; justify-content: space-between; align-items: flex-start; height: 320px;">
 {bars_html}
 </div>
 </div>""", unsafe_allow_html=True)
+            st.caption("🟢 80%+ strong overlap · 🟡 55–79% partial overlap · 🔴 below 55% weak overlap — worth rewording, not a dealbreaker.")
             if jd_match.get("missing_sections"):
-                st.warning(f"⚠️ Sections not detected in resume: {', '.join(jd_match['missing_sections'])}")
+                st.warning(f"⚠️ We couldn't find a clear **{', '.join(jd_match['missing_sections'])}** section in your resume, so that score defaulted to 0%. Adding a clearly-labeled section (even a short one) usually fixes this instantly.")
 
     # ── Export ──
     try:
