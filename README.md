@@ -142,11 +142,10 @@ project-root/
 │   ├── role_standards_resolver.py   # Dynamic custom-role standard synthesis
 │   ├── ai_assistant.py              # Gemini/Groq API caller, chat, visual auditor
 │   ├── growth_tracker.py            # Historical progress tracking
-│   ├── category_manager.py          # Job category CRUD/lookup helpers
 │   ├── db_handler.py                # Supabase client & query helpers
 │   ├── pdf_generator.py             # Exportable PDF report generation
 │   ├── visualizer.py                # Skill radar / chart rendering
-│   └── validators.py, errors.py, rate_limiter.py, date_parser.py, mcp_client.py
+│   └── validators.py, errors.py, rate_limiter.py
 ├── scripts/                       # Development & ML lifecycle scripts
 │   ├── train_model.py               # Trains the SVM on resume-atlas dataset
 │   ├── evaluate_models.py           # MiniLM vs. BERT semantic ranking evaluation
