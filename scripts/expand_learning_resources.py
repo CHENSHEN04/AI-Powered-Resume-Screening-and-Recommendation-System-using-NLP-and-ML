@@ -1,0 +1,308 @@
+"""
+One-off migration script: expand data/learning_resources.json with curated,
+stable-URL resources for every skill that is now shared across 2+ job roles
+in data/market_standards.json (after fix_generic_roles.py diversified the
+25 previously-generic roles), plus a handful of common soft skills.
+
+Skills not covered here still work fine: utils/gap_analyzer.py falls back to
+an AI-generated + link-verified resource for any skill missing from this
+file, so long-tail single-role skills are intentionally left to that path
+rather than hand-curated (avoids guessed/hallucinated deep-link URLs).
+"""
+import json
+from pathlib import Path
+
+PATH = Path("data/learning_resources.json")
+
+NEW_RESOURCES = {
+    "adobe creative suite": [
+        {"title": "Adobe Creative Cloud Tutorials", "url": "https://helpx.adobe.com/creative-cloud/tutorials-explore.html", "type": "Tutorial", "difficulty": "Beginner"},
+        {"title": "Coursera: Adobe Creative Suite Courses", "url": "https://www.coursera.org/search?query=Adobe%20Creative%20Suite", "type": "Course", "difficulty": "Beginner"},
+    ],
+    "adobe illustrator": [
+        {"title": "Adobe Illustrator Tutorials", "url": "https://helpx.adobe.com/illustrator/tutorials.html", "type": "Tutorial", "difficulty": "Beginner"},
+        {"title": "Coursera: Adobe Illustrator Courses", "url": "https://www.coursera.org/search?query=Adobe%20Illustrator", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "adobe photoshop": [
+        {"title": "Adobe Photoshop Tutorials", "url": "https://helpx.adobe.com/photoshop/tutorials.html", "type": "Tutorial", "difficulty": "Beginner"},
+        {"title": "Coursera: Adobe Photoshop Courses", "url": "https://www.coursera.org/search?query=Adobe%20Photoshop", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "agile": [
+        {"title": "Atlassian: Agile Coach", "url": "https://www.atlassian.com/agile", "type": "Guide", "difficulty": "Beginner"},
+        {"title": "Scrum.org Resources", "url": "https://www.scrum.org/resources", "type": "Guide", "difficulty": "Intermediate"},
+    ],
+    "animation": [
+        {"title": "Adobe Animate Tutorials", "url": "https://helpx.adobe.com/animate/tutorials.html", "type": "Tutorial", "difficulty": "Beginner"},
+        {"title": "Coursera: Animation Courses", "url": "https://www.coursera.org/search?query=Animation", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "autocad": [
+        {"title": "Autodesk: Learn AutoCAD", "url": "https://www.autodesk.com/certification/learn/autocad", "type": "Course", "difficulty": "Beginner"},
+        {"title": "Coursera: AutoCAD Courses", "url": "https://www.coursera.org/search?query=AutoCAD", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "aws": [
+        {"title": "AWS Training and Certification", "url": "https://aws.amazon.com/training/", "type": "Course", "difficulty": "Beginner"},
+        {"title": "Coursera: AWS Courses", "url": "https://www.coursera.org/search?query=AWS", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "azure": [
+        {"title": "Microsoft Learn: Azure Training", "url": "https://learn.microsoft.com/en-us/training/azure/", "type": "Course", "difficulty": "Beginner"},
+        {"title": "Coursera: Microsoft Azure Courses", "url": "https://www.coursera.org/search?query=Microsoft%20Azure", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "big data": [
+        {"title": "Coursera: Big Data Specialization", "url": "https://www.coursera.org/specializations/big-data", "type": "Course", "difficulty": "Intermediate"},
+        {"title": "edX: Big Data Courses", "url": "https://www.edx.org/learn/big-data", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "bim": [
+        {"title": "Autodesk: What is BIM", "url": "https://www.autodesk.com/solutions/bim", "type": "Guide", "difficulty": "Beginner"},
+        {"title": "Coursera: BIM Courses", "url": "https://www.coursera.org/search?query=BIM", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "blueprint reading": [
+        {"title": "Coursera: Blueprint Reading Courses", "url": "https://www.coursera.org/search?query=Blueprint%20Reading", "type": "Course", "difficulty": "Beginner"},
+        {"title": "Udemy: Blueprint Reading Courses", "url": "https://www.udemy.com/courses/search/?q=blueprint%20reading", "type": "Course", "difficulty": "Beginner"},
+    ],
+    "budgeting": [
+        {"title": "Investopedia: Budgeting Guide", "url": "https://www.investopedia.com/budgeting-4689719", "type": "Guide", "difficulty": "Beginner"},
+        {"title": "Coursera: Budgeting Courses", "url": "https://www.coursera.org/search?query=Budgeting", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "building codes": [
+        {"title": "ICC: Building Code Education", "url": "https://www.iccsafe.org/education/", "type": "Course", "difficulty": "Intermediate"},
+        {"title": "Coursera: Building Codes Courses", "url": "https://www.coursera.org/search?query=Building%20Codes", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "business development": [
+        {"title": "HubSpot Academy", "url": "https://academy.hubspot.com/", "type": "Course", "difficulty": "Beginner"},
+        {"title": "Coursera: Business Development Courses", "url": "https://www.coursera.org/search?query=Business%20Development", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "change management": [
+        {"title": "Prosci: Change Management Resources", "url": "https://www.prosci.com/resources", "type": "Guide", "difficulty": "Intermediate"},
+        {"title": "Coursera: Change Management Courses", "url": "https://www.coursera.org/search?query=Change%20Management", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "ci/cd": [
+        {"title": "Jenkins Documentation", "url": "https://www.jenkins.io/doc/", "type": "Documentation", "difficulty": "Intermediate"},
+        {"title": "GitLab CI/CD Documentation", "url": "https://docs.gitlab.com/ee/ci/", "type": "Documentation", "difficulty": "Intermediate"},
+    ],
+    "cisco": [
+        {"title": "Cisco Networking Academy", "url": "https://www.netacad.com/", "type": "Course", "difficulty": "Beginner"},
+        {"title": "Coursera: Cisco Networking Courses", "url": "https://www.coursera.org/search?query=Cisco%20Networking", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "client management": [
+        {"title": "HubSpot Academy", "url": "https://academy.hubspot.com/", "type": "Course", "difficulty": "Beginner"},
+        {"title": "Coursera: Client Management Courses", "url": "https://www.coursera.org/search?query=Client%20Management", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "communication": [
+        {"title": "Coursera: Improving Communication Skills (Wharton)", "url": "https://www.coursera.org/learn/wharton-communication-skills", "type": "Course", "difficulty": "Beginner"},
+        {"title": "MindTools: Communication Skills", "url": "https://www.mindtools.com/", "type": "Guide", "difficulty": "Beginner"},
+    ],
+    "content creation": [
+        {"title": "HubSpot: Content Creation Guide", "url": "https://blog.hubspot.com/marketing/content-creation", "type": "Guide", "difficulty": "Beginner"},
+        {"title": "Coursera: Content Creation Courses", "url": "https://www.coursera.org/search?query=Content%20Creation", "type": "Course", "difficulty": "Beginner"},
+    ],
+    "copywriting": [
+        {"title": "Copyhackers: Copywriting Resources", "url": "https://copyhackers.com/", "type": "Guide", "difficulty": "Intermediate"},
+        {"title": "Coursera: Copywriting Courses", "url": "https://www.coursera.org/search?query=Copywriting", "type": "Course", "difficulty": "Beginner"},
+    ],
+    "crm software": [
+        {"title": "Salesforce Trailhead", "url": "https://trailhead.salesforce.com/", "type": "Interactive", "difficulty": "Beginner"},
+        {"title": "HubSpot Academy: CRM", "url": "https://academy.hubspot.com/", "type": "Course", "difficulty": "Beginner"},
+    ],
+    "css": [
+        {"title": "MDN: CSS Documentation", "url": "https://developer.mozilla.org/en-US/docs/Web/CSS", "type": "Documentation", "difficulty": "Beginner"},
+        {"title": "W3Schools: CSS Tutorial", "url": "https://www.w3schools.com/css/", "type": "Tutorial", "difficulty": "Beginner"},
+    ],
+    "customer service": [
+        {"title": "HubSpot Academy: Customer Service", "url": "https://academy.hubspot.com/", "type": "Course", "difficulty": "Beginner"},
+        {"title": "Coursera: Customer Service Courses", "url": "https://www.coursera.org/search?query=Customer%20Service", "type": "Course", "difficulty": "Beginner"},
+    ],
+    "data analysis": [
+        {"title": "Coursera: Google Data Analytics Professional Certificate", "url": "https://www.coursera.org/professional-certificates/google-data-analytics", "type": "Course", "difficulty": "Beginner"},
+        {"title": "Kaggle Learn", "url": "https://www.kaggle.com/learn", "type": "Interactive", "difficulty": "Beginner"},
+    ],
+    "data modeling": [
+        {"title": "Coursera: Data Modeling Courses", "url": "https://www.coursera.org/search?query=Data%20Modeling", "type": "Course", "difficulty": "Intermediate"},
+        {"title": "Vertabelo Academy: Database Design Blog", "url": "https://www.vertabelo.com/blog/", "type": "Guide", "difficulty": "Intermediate"},
+    ],
+    "database design": [
+        {"title": "W3Schools: SQL & Database Design", "url": "https://www.w3schools.com/sql/sql_intro.asp", "type": "Tutorial", "difficulty": "Beginner"},
+        {"title": "Coursera: Database Design Courses", "url": "https://www.coursera.org/search?query=Database%20Design", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "etl": [
+        {"title": "IBM: What is ETL", "url": "https://www.ibm.com/topics/etl", "type": "Guide", "difficulty": "Beginner"},
+        {"title": "Coursera: ETL Courses", "url": "https://www.coursera.org/search?query=ETL", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "excel": [
+        {"title": "Microsoft: Excel Help & Training", "url": "https://support.microsoft.com/en-us/excel", "type": "Documentation", "difficulty": "Beginner"},
+        {"title": "Coursera: Excel Courses", "url": "https://www.coursera.org/search?query=Excel", "type": "Course", "difficulty": "Beginner"},
+    ],
+    "figma": [
+        {"title": "Figma: Getting Started", "url": "https://help.figma.com/hub/getting-started", "type": "Tutorial", "difficulty": "Beginner"},
+        {"title": "Figma: Learn Design", "url": "https://www.figma.com/resources/learn-design/", "type": "Guide", "difficulty": "Beginner"},
+    ],
+    "financial analysis": [
+        {"title": "Investopedia: Financial Analysis", "url": "https://www.investopedia.com/", "type": "Guide", "difficulty": "Beginner"},
+        {"title": "Coursera: Financial Analysis Courses", "url": "https://www.coursera.org/search?query=Financial%20Analysis", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "financial modeling": [
+        {"title": "Corporate Finance Institute: Financial Modeling", "url": "https://corporatefinanceinstitute.com/resources/financial-modeling/", "type": "Guide", "difficulty": "Intermediate"},
+        {"title": "Coursera: Financial Modeling Courses", "url": "https://www.coursera.org/search?query=Financial%20Modeling", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "financial reporting": [
+        {"title": "Coursera: Financial Reporting Courses", "url": "https://www.coursera.org/search?query=Financial%20Reporting", "type": "Course", "difficulty": "Intermediate"},
+        {"title": "Investopedia: Financial Statements", "url": "https://www.investopedia.com/", "type": "Guide", "difficulty": "Beginner"},
+    ],
+    "graphic design": [
+        {"title": "Canva Design School", "url": "https://www.canva.com/learn/", "type": "Guide", "difficulty": "Beginner"},
+        {"title": "Coursera: Graphic Design Courses", "url": "https://www.coursera.org/search?query=Graphic%20Design", "type": "Course", "difficulty": "Beginner"},
+    ],
+    "graphql": [
+        {"title": "GraphQL: Official Learning Guide", "url": "https://graphql.org/learn/", "type": "Documentation", "difficulty": "Intermediate"},
+        {"title": "Apollo GraphQL Tutorials", "url": "https://www.apollographql.com/tutorials/", "type": "Tutorial", "difficulty": "Intermediate"},
+    ],
+    "html": [
+        {"title": "MDN: HTML Documentation", "url": "https://developer.mozilla.org/en-US/docs/Web/HTML", "type": "Documentation", "difficulty": "Beginner"},
+        {"title": "W3Schools: HTML Tutorial", "url": "https://www.w3schools.com/html/", "type": "Tutorial", "difficulty": "Beginner"},
+    ],
+    "javascript": [
+        {"title": "MDN: JavaScript Documentation", "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript", "type": "Documentation", "difficulty": "Beginner"},
+        {"title": "JavaScript.info", "url": "https://javascript.info/", "type": "Tutorial", "difficulty": "Beginner"},
+    ],
+    "jira": [
+        {"title": "Atlassian: Jira Guides", "url": "https://www.atlassian.com/software/jira/guides", "type": "Guide", "difficulty": "Beginner"},
+        {"title": "Atlassian University", "url": "https://university.atlassian.com/", "type": "Course", "difficulty": "Beginner"},
+    ],
+    "kubernetes": [
+        {"title": "Kubernetes: Official Tutorials", "url": "https://kubernetes.io/docs/tutorials/", "type": "Tutorial", "difficulty": "Intermediate"},
+        {"title": "Coursera: Kubernetes Courses", "url": "https://www.coursera.org/search?query=Kubernetes", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "linux": [
+        {"title": "Linux Journey", "url": "https://linuxjourney.com/", "type": "Interactive", "difficulty": "Beginner"},
+        {"title": "edX: Linux Courses", "url": "https://www.edx.org/learn/linux", "type": "Course", "difficulty": "Beginner"},
+    ],
+    "logistics": [
+        {"title": "edX: Supply Chain & Logistics Courses", "url": "https://www.edx.org/learn/logistics", "type": "Course", "difficulty": "Intermediate"},
+        {"title": "Coursera: Logistics Management Courses", "url": "https://www.coursera.org/search?query=Logistics%20Management", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "microservices": [
+        {"title": "microservices.io: Pattern Guide", "url": "https://microservices.io/", "type": "Guide", "difficulty": "Advanced"},
+        {"title": "Coursera: Microservices Courses", "url": "https://www.coursera.org/search?query=Microservices", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "negotiation": [
+        {"title": "Coursera: Successful Negotiation", "url": "https://www.coursera.org/learn/negotiation-skills", "type": "Course", "difficulty": "Beginner"},
+        {"title": "Harvard PON: Negotiation Resources", "url": "https://www.pon.harvard.edu/", "type": "Guide", "difficulty": "Intermediate"},
+    ],
+    "performance management": [
+        {"title": "SHRM: Performance Management", "url": "https://www.shrm.org/topics-tools/topics/performance-management", "type": "Guide", "difficulty": "Intermediate"},
+        {"title": "Coursera: Performance Management Courses", "url": "https://www.coursera.org/search?query=Performance%20Management", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "performance tuning": [
+        {"title": "Use The Index, Luke! (SQL Performance)", "url": "https://use-the-index-luke.com/", "type": "Guide", "difficulty": "Advanced"},
+        {"title": "Coursera: Database Performance Tuning Courses", "url": "https://www.coursera.org/search?query=Database%20Performance%20Tuning", "type": "Course", "difficulty": "Advanced"},
+    ],
+    "postgresql": [
+        {"title": "PostgreSQL Official Docs", "url": "https://www.postgresql.org/docs/", "type": "Documentation", "difficulty": "Advanced"},
+        {"title": "PostgreSQL Tutorial", "url": "https://www.postgresqltutorial.com/", "type": "Tutorial", "difficulty": "Beginner"},
+    ],
+    "project management": [
+        {"title": "Coursera: Google Project Management Certificate", "url": "https://www.coursera.org/professional-certificates/google-project-management", "type": "Course", "difficulty": "Beginner"},
+        {"title": "PMI: Learning Library", "url": "https://www.pmi.org/learning/library", "type": "Guide", "difficulty": "Intermediate"},
+    ],
+    "rest api": [
+        {"title": "REST API Design Guide", "url": "https://restfulapi.net/", "type": "Guide", "difficulty": "Intermediate"},
+        {"title": "Coursera: REST API Courses", "url": "https://www.coursera.org/search?query=REST%20API", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "risk management": [
+        {"title": "PMI: Learning Library", "url": "https://www.pmi.org/learning/library", "type": "Guide", "difficulty": "Intermediate"},
+        {"title": "Coursera: Risk Management Courses", "url": "https://www.coursera.org/search?query=Risk%20Management", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "salesforce": [
+        {"title": "Salesforce Trailhead", "url": "https://trailhead.salesforce.com/", "type": "Interactive", "difficulty": "Beginner"},
+        {"title": "Coursera: Salesforce Courses", "url": "https://www.coursera.org/search?query=Salesforce", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "sap": [
+        {"title": "SAP Learning Site", "url": "https://learning.sap.com/", "type": "Course", "difficulty": "Intermediate"},
+        {"title": "Coursera: SAP Courses", "url": "https://www.coursera.org/search?query=SAP", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "six sigma": [
+        {"title": "ASQ: Six Sigma Certification", "url": "https://asq.org/cert/six-sigma-green-belt", "type": "Course", "difficulty": "Intermediate"},
+        {"title": "Coursera: Six Sigma Courses", "url": "https://www.coursera.org/search?query=Six%20Sigma", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "social media management": [
+        {"title": "Hootsuite Academy", "url": "https://education.hootsuite.com/", "type": "Course", "difficulty": "Beginner"},
+        {"title": "HubSpot Academy", "url": "https://academy.hubspot.com/", "type": "Course", "difficulty": "Beginner"},
+    ],
+    "sql server": [
+        {"title": "Microsoft Learn: SQL Server", "url": "https://learn.microsoft.com/en-us/sql/sql-server/", "type": "Documentation", "difficulty": "Intermediate"},
+        {"title": "W3Schools: SQL Tutorial", "url": "https://www.w3schools.com/sql/", "type": "Tutorial", "difficulty": "Beginner"},
+    ],
+    "stakeholder management": [
+        {"title": "PMI: Learning Library", "url": "https://www.pmi.org/learning/library", "type": "Guide", "difficulty": "Intermediate"},
+        {"title": "Coursera: Stakeholder Management Courses", "url": "https://www.coursera.org/search?query=Stakeholder%20Management", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "strategic planning": [
+        {"title": "Harvard Business Review: Strategy & Execution", "url": "https://hbr.org/topic/strategy-planning-and-execution", "type": "Guide", "difficulty": "Advanced"},
+        {"title": "Coursera: Strategic Planning Courses", "url": "https://www.coursera.org/search?query=Strategic%20Planning", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "supply chain": [
+        {"title": "Coursera: Supply Chain Management Specialization", "url": "https://www.coursera.org/specializations/supply-chain-management", "type": "Course", "difficulty": "Intermediate"},
+        {"title": "edX: Supply Chain Management Courses", "url": "https://www.edx.org/learn/supply-chain-management", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "team leadership": [
+        {"title": "Coursera: Leading Teams", "url": "https://www.coursera.org/learn/leading-teams", "type": "Course", "difficulty": "Intermediate"},
+        {"title": "Harvard Business Review: Leadership", "url": "https://hbr.org/topic/leadership", "type": "Guide", "difficulty": "Intermediate"},
+    ],
+    "testing": [
+        {"title": "Guru99: Software Testing Tutorial", "url": "https://www.guru99.com/software-testing.html", "type": "Tutorial", "difficulty": "Beginner"},
+        {"title": "Coursera: Software Testing Courses", "url": "https://www.coursera.org/search?query=Software%20Testing", "type": "Course", "difficulty": "Beginner"},
+    ],
+    "ui design": [
+        {"title": "Coursera: Google UX Design Professional Certificate", "url": "https://www.coursera.org/professional-certificates/google-ux-design", "type": "Course", "difficulty": "Beginner"},
+        {"title": "Figma: Learn Design", "url": "https://www.figma.com/resources/learn-design/", "type": "Guide", "difficulty": "Beginner"},
+    ],
+    "video editing": [
+        {"title": "Adobe Premiere Pro Tutorials", "url": "https://helpx.adobe.com/premiere-pro/tutorials.html", "type": "Tutorial", "difficulty": "Beginner"},
+        {"title": "Coursera: Video Editing Courses", "url": "https://www.coursera.org/search?query=Video%20Editing", "type": "Course", "difficulty": "Beginner"},
+    ],
+    "vpn": [
+        {"title": "Cloudflare: What is a VPN", "url": "https://www.cloudflare.com/learning/access-management/what-is-a-vpn/", "type": "Guide", "difficulty": "Beginner"},
+        {"title": "Coursera: Networking & VPN Courses", "url": "https://www.coursera.org/search?query=VPN%20Networking", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "leadership": [
+        {"title": "Harvard Business Review: Leadership", "url": "https://hbr.org/topic/leadership", "type": "Guide", "difficulty": "Intermediate"},
+        {"title": "Coursera: Leading Teams", "url": "https://www.coursera.org/learn/leading-teams", "type": "Course", "difficulty": "Intermediate"},
+    ],
+    "time management": [
+        {"title": "Coursera: Work Smarter, Not Harder", "url": "https://www.coursera.org/learn/work-smarter-not-harder", "type": "Course", "difficulty": "Beginner"},
+        {"title": "MindTools: Time Management", "url": "https://www.mindtools.com/", "type": "Guide", "difficulty": "Beginner"},
+    ],
+    "teamwork": [
+        {"title": "Coursera: Teamwork Skills Courses", "url": "https://www.coursera.org/search?query=Teamwork", "type": "Course", "difficulty": "Beginner"},
+        {"title": "MindTools: Teamwork", "url": "https://www.mindtools.com/", "type": "Guide", "difficulty": "Beginner"},
+    ],
+    "problem solving": [
+        {"title": "Coursera: Introduction to Problem Solving", "url": "https://www.coursera.org/learn/problem-solving", "type": "Course", "difficulty": "Beginner"},
+        {"title": "MindTools: Problem Solving", "url": "https://www.mindtools.com/", "type": "Guide", "difficulty": "Beginner"},
+    ],
+    "analytical skills": [
+        {"title": "Coursera: Google Data Analytics Professional Certificate", "url": "https://www.coursera.org/professional-certificates/google-data-analytics", "type": "Course", "difficulty": "Beginner"},
+        {"title": "Kaggle Learn", "url": "https://www.kaggle.com/learn", "type": "Interactive", "difficulty": "Beginner"},
+    ],
+    "ms office": [
+        {"title": "Microsoft Office Support & Training", "url": "https://support.microsoft.com/en-us/office", "type": "Documentation", "difficulty": "Beginner"},
+        {"title": "Coursera: Microsoft Office Courses", "url": "https://www.coursera.org/search?query=Microsoft%20Office", "type": "Course", "difficulty": "Beginner"},
+    ],
+}
+
+def main():
+    data = json.loads(PATH.read_text(encoding="utf-8"))
+    resources = data["resources"]
+    added, skipped = 0, 0
+    for skill, entries in NEW_RESOURCES.items():
+        if skill in resources:
+            skipped += 1
+            continue
+        resources[skill] = entries
+        added += 1
+    data["resources"] = dict(sorted(resources.items()))
+    data["last_updated"] = "2026-08-05"
+    PATH.write_text(json.dumps(data, indent=4) + "\n", encoding="utf-8")
+    print(f"Added {added} new skill entries, skipped {skipped} already present. Total: {len(resources)}")
+
+if __name__ == "__main__":
+    main()

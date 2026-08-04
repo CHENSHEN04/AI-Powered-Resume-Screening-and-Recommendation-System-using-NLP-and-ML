@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "last_updated": "2026-01-23",
+  "last_updated": "2026-08-05",
   "job_categories": {
     "accountant": {
       "title": "Accountant",
@@ -80,18 +80,21 @@
     "apparel": {
       "title": "Apparel",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "Fashion Merchandising",
+        "Textile Knowledge",
+        "Garment Production",
+        "Quality Control"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "Adobe Illustrator",
+        "Trend Forecasting",
+        "Supply Chain Management",
+        "Pattern Making"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "Sustainable Fashion",
+        "CAD for Fashion",
+        "Retail Buying"
       ],
       "weights": {
         "required": 1.0,
@@ -102,18 +105,21 @@
     "architecture": {
       "title": "Architecture",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "AutoCAD",
+        "Building Codes",
+        "Architectural Design",
+        "Blueprint Reading"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
+        "Revit",
+        "SketchUp",
+        "3D Modeling",
         "Project Management"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "BIM",
+        "Sustainable Design",
+        "Urban Planning"
       ],
       "weights": {
         "required": 1.0,
@@ -124,18 +130,21 @@
     "arts": {
       "title": "Arts",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "Creative Writing",
+        "Adobe Creative Suite",
+        "Content Creation",
+        "Visual Storytelling"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "Photography",
+        "Video Editing",
+        "Graphic Design",
+        "Social Media Management"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "Illustration",
+        "Animation",
+        "Copywriting"
       ],
       "weights": {
         "required": 1.0,
@@ -146,18 +155,21 @@
     "automobile": {
       "title": "Automobile",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "Automotive Repair",
+        "Vehicle Diagnostics",
+        "Mechanical Systems",
+        "Preventive Maintenance"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "OBD Diagnostics",
+        "Electrical Systems",
+        "Automotive Software",
+        "Quality Inspection"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "Hybrid/EV Systems",
+        "CAD for Automotive",
+        "Lean Manufacturing"
       ],
       "weights": {
         "required": 1.0,
@@ -168,18 +180,21 @@
     "aviation": {
       "title": "Aviation",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "Aviation Safety",
+        "Aircraft Systems",
+        "Flight Operations",
+        "Regulatory Compliance"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "Aircraft Maintenance",
+        "Ground Operations",
+        "Airport Management",
+        "Logistics"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "Air Traffic Control",
+        "Aviation Software",
+        "Crew Resource Management"
       ],
       "weights": {
         "required": 1.0,
@@ -190,18 +205,21 @@
     "bpo": {
       "title": "BPO",
       "required_skills": [
+        "Customer Service",
         "Communication",
-        "Problem Solving",
-        "Time Management"
+        "CRM Software",
+        "Call Handling"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "Data Entry",
+        "Ticketing Systems",
+        "Multitasking",
+        "Conflict Resolution"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "Six Sigma",
+        "Team Leadership",
+        "Multilingual Support"
       ],
       "weights": {
         "required": 1.0,
@@ -237,18 +255,22 @@
     "blockchain": {
       "title": "Blockchain",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "Blockchain Fundamentals",
+        "Solidity",
+        "Smart Contracts",
+        "Cryptography"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "Ethereum",
+        "Web3.js",
+        "Distributed Systems",
+        "Consensus Algorithms"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "DeFi",
+        "NFTs",
+        "Hyperledger",
+        "Rust"
       ],
       "weights": {
         "required": 1.0,
@@ -259,18 +281,21 @@
     "building_and_construction": {
       "title": "Building and Construction",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "Construction Management",
+        "Blueprint Reading",
+        "Building Codes",
+        "Site Supervision"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "AutoCAD",
+        "Project Scheduling",
+        "Cost Estimation",
+        "Safety Management"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "BIM",
+        "LEED Certification",
+        "Procurement"
       ],
       "weights": {
         "required": 1.0,
@@ -309,18 +334,21 @@
     "civil_engineer": {
       "title": "Civil Engineer",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "Structural Analysis",
+        "AutoCAD",
+        "Civil 3D",
+        "Construction Materials"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "Project Management",
+        "Surveying",
+        "Geotechnical Engineering",
+        "STAAD Pro"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "BIM",
+        "Transportation Engineering",
+        "Environmental Engineering"
       ],
       "weights": {
         "required": 1.0,
@@ -331,18 +359,21 @@
     "consultant": {
       "title": "Consultant",
       "required_skills": [
-        "Communication",
+        "Business Strategy",
         "Problem Solving",
-        "Time Management"
+        "Data Analysis",
+        "Client Management"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
+        "PowerPoint",
+        "Excel",
+        "Market Research",
         "Project Management"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "Change Management",
+        "Financial Modeling",
+        "Presentation Skills"
       ],
       "weights": {
         "required": 1.0,
@@ -427,18 +458,21 @@
     "designing": {
       "title": "Designing",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "Adobe Photoshop",
+        "Adobe Illustrator",
+        "Graphic Design",
+        "Typography"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "UI Design",
+        "Branding",
+        "InDesign",
+        "Figma"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "Motion Graphics",
+        "3D Design",
+        "Print Design"
       ],
       "weights": {
         "required": 1.0,
@@ -449,18 +483,24 @@
     "devops": {
       "title": "DevOps",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "Linux",
+        "CI/CD",
+        "Docker",
+        "Kubernetes",
+        "Scripting"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "AWS",
+        "Jenkins",
+        "Terraform",
+        "Ansible",
+        "Monitoring"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "Kubernetes Security",
+        "GitOps",
+        "Prometheus",
+        "Grafana"
       ],
       "weights": {
         "required": 1.0,
@@ -471,18 +511,21 @@
     "digital_media": {
       "title": "Digital Media",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "Social Media Marketing",
+        "Content Creation",
+        "SEO",
+        "Digital Analytics"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "Google Analytics",
+        "Video Editing",
+        "Email Marketing",
+        "Adobe Creative Suite"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "Paid Advertising",
+        "Influencer Marketing",
+        "Marketing Automation"
       ],
       "weights": {
         "required": 1.0,
@@ -493,18 +536,24 @@
     "dotnet_developer": {
       "title": "DotNet Developer",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "C#",
+        ".NET Framework",
+        "ASP.NET",
+        "SQL Server",
+        "Git"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        ".NET Core",
+        "MVC",
+        "Entity Framework",
+        "REST API",
+        "Azure"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "Microservices",
+        "Blazor",
+        "Unit Testing",
+        "Docker"
       ],
       "weights": {
         "required": 1.0,
@@ -515,18 +564,22 @@
     "etl_developer": {
       "title": "ETL Developer",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "ETL",
+        "SQL",
+        "Data Warehousing",
+        "Informatica"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "SSIS",
+        "Talend",
+        "Python",
+        "Data Modeling"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "Apache Airflow",
+        "Big Data",
+        "Snowflake",
+        "Cloud Data Pipelines"
       ],
       "weights": {
         "required": 1.0,
@@ -537,18 +590,21 @@
     "education": {
       "title": "Education",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "Curriculum Development",
+        "Lesson Planning",
+        "Classroom Management",
+        "Communication"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "Instructional Design",
+        "E-Learning Tools",
+        "Assessment Design",
+        "Educational Technology"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "LMS Administration",
+        "Special Education",
+        "Student Counseling"
       ],
       "weights": {
         "required": 1.0,
@@ -586,18 +642,21 @@
     "finance": {
       "title": "Finance",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "Financial Analysis",
+        "Excel",
+        "Financial Modeling",
+        "Accounting Principles"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "Financial Reporting",
+        "Budgeting",
+        "Bloomberg Terminal",
+        "Valuation"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "CFA",
+        "Risk Management",
+        "Investment Analysis"
       ],
       "weights": {
         "required": 1.0,
@@ -608,18 +667,21 @@
     "food_and_beverages": {
       "title": "Food and Beverages",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "Food Safety",
+        "Menu Planning",
+        "Inventory Management",
+        "Customer Service"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "HACCP",
+        "Cost Control",
+        "Kitchen Management",
+        "Supply Chain"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "Nutrition Knowledge",
+        "Event Catering",
+        "POS Systems"
       ],
       "weights": {
         "required": 1.0,
@@ -630,18 +692,21 @@
     "health_and_fitness": {
       "title": "Health and Fitness",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "Exercise Science",
+        "Nutrition",
+        "Fitness Assessment",
+        "Client Coaching"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "Personal Training Certification",
+        "Program Design",
+        "First Aid/CPR",
+        "Group Fitness"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "Sports Psychology",
+        "Rehabilitation Exercise",
+        "Wellness Coaching"
       ],
       "weights": {
         "required": 1.0,
@@ -652,18 +717,21 @@
     "human_resources": {
       "title": "Human Resources",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "Recruitment",
+        "HR Policies",
+        "Employee Relations",
+        "HRIS"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "Payroll Management",
+        "Performance Management",
+        "Labor Law",
+        "Talent Acquisition"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "Compensation & Benefits",
+        "Organizational Development",
+        "SHRM Certification"
       ],
       "weights": {
         "required": 1.0,
@@ -732,18 +800,21 @@
     "management": {
       "title": "Management",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "Team Leadership",
+        "Strategic Planning",
+        "Decision Making",
+        "Communication"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "Project Management",
+        "Budgeting",
+        "Performance Management",
+        "Stakeholder Management"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "Change Management",
+        "Business Development",
+        "Six Sigma"
       ],
       "weights": {
         "required": 1.0,
@@ -835,18 +906,21 @@
     "pmo": {
       "title": "Project Management Operations (PMO)",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "Project Management",
+        "MS Project",
+        "Risk Management",
+        "Stakeholder Management"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "Agile",
+        "Scrum",
+        "PMP",
+        "Budgeting"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "Portfolio Management",
+        "Jira",
+        "Change Management"
       ],
       "weights": {
         "required": 1.0,
@@ -857,18 +931,21 @@
     "public_relations": {
       "title": "Public Relations",
       "required_skills": [
+        "Media Relations",
+        "Press Releases",
         "Communication",
-        "Problem Solving",
-        "Time Management"
+        "Crisis Management"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "Social Media Management",
+        "Copywriting",
+        "Brand Management",
+        "Event Planning"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "Media Training",
+        "Public Speaking",
+        "Reputation Management"
       ],
       "weights": {
         "required": 1.0,
@@ -936,18 +1013,21 @@
     "sap_developer": {
       "title": "SAP Developer",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "SAP ABAP",
+        "SAP Modules",
+        "SQL",
+        "SAP Fiori"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "SAP HANA",
+        "SAP MM",
+        "SAP SD",
+        "SAP FICO"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "SAP S/4HANA",
+        "SAP BASIS",
+        "Integration (SAP PI/PO)"
       ],
       "weights": {
         "required": 1.0,
@@ -958,18 +1038,21 @@
     "sql_developer": {
       "title": "SQL Developer",
       "required_skills": [
-        "Communication",
-        "Problem Solving",
-        "Time Management"
+        "SQL",
+        "Database Design",
+        "T-SQL",
+        "Stored Procedures"
       ],
       "recommended_skills": [
-        "MS Office",
-        "Teamwork",
-        "Project Management"
+        "SQL Server",
+        "Query Optimization",
+        "ETL",
+        "Data Modeling"
       ],
       "nice_to_have": [
-        "Leadership",
-        "Analytical Skills"
+        "PostgreSQL",
+        "Performance Tuning",
+        "Reporting (SSRS)"
       ],
       "weights": {
         "required": 1.0,
