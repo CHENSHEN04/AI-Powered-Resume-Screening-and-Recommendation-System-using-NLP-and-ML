@@ -991,7 +991,6 @@ Specifically analyze and return values for:
 2. Body text font size and whether it is in the professional 10-12pt range.
 3. ATS Friendliness: check if the layout is ATS-friendly (e.g. single-column, standard headings, no complex graphics, tables, or text boxes).
 4. Bullet Point Count: check if any work experience has too many bullet points (e.g. more than 6).
-5. JD Keyword Gaps: compare the resume to the target Job Description (if target JD: {jd_text}) and list missing relevant keywords.
 
 Return ONLY a valid JSON object with the following exact keys and structure:
 - "visual_polish_score": integer 0-100 (overall layout appeal and whitespace utilization)
@@ -1001,7 +1000,6 @@ Return ONLY a valid JSON object with the following exact keys and structure:
 - "font_size": string (detected body text size and size verdict)
 - "ats_friendly": string (verdict on ATS friendliness and reasoning)
 - "bullet_points_check": string (feedback on bullet points count and density)
-- "keyword_gaps": array of strings (missing relevant keywords for the JD)
 - "red_flags": [
     {{
       "issue": "Specific description of the styling issue",
@@ -1023,7 +1021,6 @@ _VISUAL_SCHEMA = {
         "font_size": {"type": "string"},
         "ats_friendly": {"type": "string"},
         "bullet_points_check": {"type": "string"},
-        "keyword_gaps": {"type": "array", "items": {"type": "string"}},
         "red_flags": {
             "type": "array",
             "items": {
@@ -1041,7 +1038,7 @@ _VISUAL_SCHEMA = {
     "required": [
         "visual_polish_score", "hierarchy_score", "consistency_score",
         "font_family", "font_size", "ats_friendly", "bullet_points_check",
-        "keyword_gaps", "red_flags", "recruiter_notes"
+        "red_flags", "recruiter_notes"
     ],
 }
 
@@ -1068,21 +1065,21 @@ def _cached_visual_evaluate(image_bytes: bytes, font_metadata_str: str, jd_text:
 
 
 class AIVisualEvaluator:
-    def evaluate(self, image_bytes: bytes, font_metadata: list = None, resume_text: str = "", jd_text: str = "") -> Dict:
+    def evaluate(self, image_bytes: bytes, font_metadata: list = None, jd_text: str = "") -> Dict:
         """
         Evaluate resume aesthetics using Gemini Vision with raw image bytes.
         """
         if not image_bytes or not _gemini_manager.has_keys():
-            return self._fallback(font_metadata, resume_text, jd_text)
-            
+            return self._fallback(font_metadata)
+
         font_metadata_str = str(font_metadata) if font_metadata else ""
         parsed = _cached_visual_evaluate(image_bytes, font_metadata_str, jd_text)
         if parsed:
             return parsed
-            
-        return self._fallback(font_metadata, resume_text, jd_text)
-        
-    def _fallback(self, font_metadata: list = None, resume_text: str = "", jd_text: str = "") -> Dict:
+
+        return self._fallback(font_metadata)
+
+    def _fallback(self, font_metadata: list = None) -> Dict:
         """Fallback evaluation if Gemini Vision is offline."""
         import re
         
@@ -1320,36 +1317,6 @@ class AIVisualEvaluator:
         else:
             bullet_check_status = "Optimal bullet point density (Under 6 per section)"
             
-        # 7. Analyze Keyword Gaps
-        keyword_gaps = []
-        if jd_text:
-            jd_words = set()
-            noise_words = {
-                "the", "and", "our", "you", "your", "for", "with", "from", "that", "this",
-                "will", "shall", "about", "into", "over", "after", "kuala", "lumpur",
-                "malaysia", "singapore", "required", "skills", "role", "job", "description",
-                "resume", "experience", "candidate", "ability", "years", "knowledge", "working",
-                "must", "have", "preferred", "degree", "field", "strong", "excellent", "written",
-                "verbal", "communication", "skills", "good", "team", "oriented", "high", "level",
-                "successful", "candidates", "looking", "join", "able", "address", "advanced",
-                "analyses"
-            }
-            words = re.findall(r"\b[a-zA-Z\+\#]{3,15}\b", jd_text.lower())
-            for w in words:
-                if w not in noise_words:
-                    jd_words.add(w)
-                    
-            r_text = resume_text or ""
-            if not r_text and spans:
-                r_text = " ".join(s.get("text", "") for s in spans)
-                
-            resume_words = set(re.findall(r"\b[a-zA-Z\+\#]{3,15}\b", r_text.lower()))
-            missing = list(jd_words - resume_words)
-            keyword_gaps = sorted(missing)[:8]
-            
-        if keyword_gaps:
-            scores["visual_polish_score"] -= min(15, 2 * len(keyword_gaps))
-            
         # Deduct some default scores for fallback layout if no other issues found just to look realistic
         if not red_flags:
             red_flags.append({
@@ -1374,9 +1341,7 @@ class AIVisualEvaluator:
             notes.append("Convert your multi-column layout into a single-column format to improve ATS parser readability.")
         if max_consec_bullets > 6:
             notes.append(f"Condense the work experience section that has {max_consec_bullets} bullets down to 3-5 high-impact bullets.")
-        if keyword_gaps:
-            notes.append(f"Incorporate missing JD keywords like {', '.join(keyword_gaps[:3])} to optimize for matching algorithms.")
-            
+
         if not notes:
             recruiter_notes = "Your resume has a solid layout structure, with balanced spacing and readable typography. Standardizing margins and keeping sections scannable will maintain this polished appearance."
         else:
@@ -1390,7 +1355,6 @@ class AIVisualEvaluator:
             "font_size": font_size_status,
             "ats_friendly": ats_friendly_status,
             "bullet_points_check": bullet_check_status,
-            "keyword_gaps": keyword_gaps,
             "red_flags": red_flags,
             "recruiter_notes": recruiter_notes,
             "_source": "rule_based"

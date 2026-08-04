@@ -1015,18 +1015,23 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = "", 
         except Exception:
             pass
         resume_skills_set = set(s.lower() for s in skill_data["all_skills"])
-        matched_skills = [s for s in jd_skills if s.lower() in resume_skills_set]
-        missing_skills = [s for s in jd_skills if s.lower() not in resume_skills_set]
+        matched_skills = [s for s in jd_skills if analyzer._is_skill_matched(s, resume_skills_set)]
+        missing_skills = [s for s in jd_skills if not analyzer._is_skill_matched(s, resume_skills_set)]
         extra_skills   = [s for s in skill_data["all_skills"] if s.lower() not in {x.lower() for x in jd_skills}]
         st.session_state["jd_skills"]      = jd_skills
         st.session_state["matched_skills"] = matched_skills
         st.session_state["missing_skills"] = missing_skills
         st.session_state["extra_skills"]   = extra_skills
+        # Preserve this literal JD-text-vs-resume gap separately from the role-standards
+        # based "missing_skills" computed below, which gets overwritten to reflect the
+        # target role's template skills rather than this specific JD's wording.
+        st.session_state["jd_keyword_gaps"] = missing_skills
     else:
         # Fall back to market-standards gap
         matched_skills = skill_data["all_skills"]
         missing_skills = []
         extra_skills   = []
+        st.session_state["jd_keyword_gaps"] = []
 
     exp_level = st.session_state.get("experience_level", "Internship")
     analysis = analyzer.analyze_gaps(skill_data["all_skills"], target_role, jd_text=jd_text, experience_level=exp_level)
@@ -1136,7 +1141,6 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = "", 
             visual_analysis = evaluator.evaluate(
                 st.session_state["resume_image"],
                 st.session_state.get("font_metadata"),
-                resume_text=resume_text,
                 jd_text=jd_text
             )
             st.session_state["visual_analysis"] = visual_analysis
@@ -2197,7 +2201,7 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
             else:
                 bullets_status = "✅ Optimal"
                 
-            gaps = visual_analysis.get('keyword_gaps', [])
+            gaps = st.session_state.get('jd_keyword_gaps', [])
             if gaps:
                 keywords_status = f"⚠️ {len(gaps)} Missing"
             else:
@@ -2368,11 +2372,14 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
                 else:
                     st.success("🎉 No layout formatting issues detected! Your resume design is flawless.")
                     
-                # Display Keyword Gaps
-                if visual_analysis.get("keyword_gaps"):
+                # Display Keyword Gaps (sourced from the same skill-gap engine as the
+                # Skill Gaps tab, so this list is always consistent with it — not an
+                # independent AI vision guess or a naive word-diff)
+                jd_keyword_gaps = st.session_state.get("jd_keyword_gaps", [])
+                if jd_keyword_gaps:
                     st.markdown("#### 🔑 Missing JD Keywords")
-                    st.caption("These keywords from the job description are missing in your resume. Incorporating them can boost your matching score:")
-                    tag_html = "".join(f'<span style="display:inline-block; background:rgba(243,156,18,0.12); color:#F39C12; border:1px solid rgba(243,156,18,0.3); padding:0.25rem 0.6rem; border-radius:12px; font-size:0.75rem; margin-right:0.4rem; margin-bottom:0.4rem; font-weight:600;">{kw}</span>' for kw in visual_analysis["keyword_gaps"])
+                    st.caption("These skills from the job description are missing in your resume. Incorporating them can boost your matching score:")
+                    tag_html = "".join(f'<span style="display:inline-block; background:rgba(243,156,18,0.12); color:#F39C12; border:1px solid rgba(243,156,18,0.3); padding:0.25rem 0.6rem; border-radius:12px; font-size:0.75rem; margin-right:0.4rem; margin-bottom:0.4rem; font-weight:600;">{kw}</span>' for kw in jd_keyword_gaps)
                     st.markdown(f'<div style="margin-bottom: 1rem;">{tag_html}</div>', unsafe_allow_html=True)
                     st.markdown("""
                     <div class="glass-panel" style="padding:0.8rem; border-left:3px solid #F39C12; background:rgba(243,156,18,0.02); font-size:0.85rem; margin-bottom: 1.5rem;">
