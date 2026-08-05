@@ -14,6 +14,13 @@ from pathlib import Path
 from utils.errors import ErrorCode, AppError, get_error, log_error
 
 
+class OCRUnavailableError(Exception):
+    """Raised when OCR is attempted but Tesseract itself isn't usable (missing
+    Python package, or missing/misconfigured system binary) — distinct from OCR
+    running successfully but finding no readable text."""
+    pass
+
+
 # ==============================================================================
 # Data Classes
 # ==============================================================================
@@ -177,8 +184,32 @@ class ResumeParser:
                 
                 doc.close()
                 full_text = "\n\n".join(text_chunks)
-            
-            # If still no text, return error
+            used_ocr = False
+
+            # If neither text-layer extractor found anything, this is very likely a
+            # scanned/rasterized PDF with no embedded text layer at all — fall back to
+            # OCR before giving up, instead of immediately erroring out.
+            if not full_text.strip():
+                try:
+                    ocr_text = self._ocr_extract_pdf(file_bytes)
+                except OCRUnavailableError as e:
+                    error = get_error(ErrorCode.OCR_FAILED)
+                    error.message = str(e)
+                    log_error(error, {"file_type": "pdf", "page_count": page_count})
+                    return ParseResult(
+                        success=False,
+                        text="",
+                        page_count=page_count,
+                        error_code=error.code.value,
+                        error=error
+                    )
+
+                if ocr_text.strip():
+                    full_text = ocr_text
+                    used_ocr = True
+
+            # If still no text (OCR ran but the scan was unreadable, e.g. blank pages
+            # or extremely low quality), give up with the original error.
             if not full_text.strip():
                 error = get_error(ErrorCode.NO_TEXT_EXTRACTED)
                 log_error(error, {"file_type": "pdf", "page_count": page_count})
@@ -189,10 +220,18 @@ class ResumeParser:
                     error_code=error.code.value,
                     error=error
                 )
-            
+
             # Calculate confidence based on text length and structure
             confidence = self._calculate_confidence(full_text, page_count)
-            
+            if used_ocr:
+                # OCR text is inherently noisier than a real text layer (misreads,
+                # dropped characters, layout artifacts). Capping below the existing
+                # "Low confidence parsing, please double-check" threshold (0.7, see
+                # render_review_stage in app.py) means that warning reliably fires
+                # for every OCR'd resume, reusing the app's existing review-prompt UI
+                # instead of needing a separate bespoke "this was OCR'd" notice.
+                confidence = min(confidence, 0.65)
+
             return ParseResult(
                 success=True,
                 text=full_text,
@@ -201,7 +240,8 @@ class ResumeParser:
                 metadata={
                     "file_type": "pdf",
                     "text_length": len(full_text),
-                    "parser": "pdfplumber"
+                    "parser": "tesseract_ocr" if used_ocr else "pdfplumber",
+                    "ocr_used": used_ocr
                 }
             )
         
@@ -222,7 +262,65 @@ class ResumeParser:
                 error_code=error.code.value,
                 error=error
             )
-    
+
+    def _ocr_extract_pdf(self, file_bytes: bytes, max_pages: int = 5) -> str:
+        """
+        OCR fallback for scanned/image-only PDFs — pages with no embedded text
+        layer at all, which pdfplumber/PyMuPDF can't read since they only pull
+        text that's already encoded in the PDF, not pixels.
+
+        Renders each page to a high-DPI image (PyMuPDF) and runs Tesseract OCR
+        on it (pytesseract). Requires the Tesseract OCR system binary to be
+        installed separately — this is NOT bundled by the pytesseract pip
+        package. Local dev: install from
+        https://github.com/UB-Mannheim/tesseract/wiki (Windows) or
+        `apt install tesseract-ocr` / `brew install tesseract`. Deployment:
+        see packages.txt (Streamlit Community Cloud installs it from there).
+
+        Raises:
+            OCRUnavailableError: if the pytesseract package or the underlying
+                Tesseract binary isn't usable in this environment.
+
+        Returns:
+            Concatenated OCR text across up to `max_pages` pages ("" if OCR
+            ran successfully but found no readable text).
+        """
+        try:
+            import fitz
+            import pytesseract
+            from PIL import Image
+        except ImportError as e:
+            raise OCRUnavailableError(
+                f"OCR is unavailable: required Python package not installed ({e})."
+            ) from e
+
+        doc = fitz.open(stream=BytesIO(file_bytes), filetype="pdf")
+        try:
+            text_chunks = []
+            for i, page in enumerate(doc):
+                if i >= max_pages:
+                    break
+                # Higher DPI than convert_pdf_to_image()'s 150 — OCR accuracy is
+                # much more sensitive to resolution than the vision-model use case
+                # convert_pdf_to_image() serves.
+                pix = page.get_pixmap(dpi=300)
+                img = Image.open(BytesIO(pix.tobytes("png")))
+                try:
+                    page_text = pytesseract.image_to_string(img)
+                except pytesseract.TesseractNotFoundError as e:
+                    raise OCRUnavailableError(
+                        "OCR is unavailable: the Tesseract OCR system binary isn't "
+                        "installed or isn't on PATH. Install it separately from "
+                        "https://github.com/UB-Mannheim/tesseract/wiki (Windows) or "
+                        "your OS package manager — the pytesseract Python package "
+                        "alone doesn't include the OCR engine itself."
+                    ) from e
+                if page_text and page_text.strip():
+                    text_chunks.append(page_text)
+            return "\n\n".join(text_chunks)
+        finally:
+            doc.close()
+
     def parse_docx(self, file_bytes: bytes) -> ParseResult:
         """
         Parse a DOCX file using python-docx.

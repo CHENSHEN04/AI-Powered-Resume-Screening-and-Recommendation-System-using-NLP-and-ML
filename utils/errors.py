@@ -126,8 +126,15 @@ ERROR_MESSAGES = {
     ErrorCode.NO_TEXT_EXTRACTED: AppError(
         code=ErrorCode.NO_TEXT_EXTRACTED,
         message="No text content found in document",
-        user_message="We couldn't extract any text from your file.",
-        suggestion="This may be a scanned image. Try uploading a text-based PDF.",
+        user_message="We tried reading this as a scanned image (OCR) but still couldn't extract any readable text.",
+        suggestion="Make sure the scan is clear, right-side-up, and not blank — or try uploading a text-based PDF instead.",
+        recoverable=True
+    ),
+    ErrorCode.OCR_FAILED: AppError(
+        code=ErrorCode.OCR_FAILED,
+        message="OCR engine unavailable or failed",
+        user_message="This looks like a scanned image, and our OCR reader isn't available right now.",
+        suggestion="Try again in a moment, or upload a text-based (not scanned) PDF instead.",
         recoverable=True
     ),
     ErrorCode.BERT_MODEL_ERROR: AppError(
