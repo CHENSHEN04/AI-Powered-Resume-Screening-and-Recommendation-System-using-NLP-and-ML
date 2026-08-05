@@ -1704,7 +1704,7 @@ def render_dashboard_stage():
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-value">{conf*100:.0f}%</div>
-            <div class="metric-label">Role Classifier Confidence</div>
+            <div class="metric-label">Classifier Confidence</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1720,7 +1720,11 @@ def render_dashboard_stage():
         f"**Role Classifier Confidence** is a separate, smaller signal — {_svm_caption_subject}. "
         "It's completely normal for this number to be low, even near 0%, if you're early-career, "
         "self-taught, or coming from a different field — it only makes up 10% of your Match "
-        "Score, so it won't sink an otherwise strong application on its own."
+        "Score, so it won't sink an otherwise strong application on its own. It measures "
+        "something different from Match Score, not the same thing twice: Match Score checks "
+        "how well you fit *this specific posting's* wording, while Classifier Confidence checks "
+        "whether your resume's overall vocabulary reads like a typical profile in this field *in "
+        "general* — so it's expected, not contradictory, for one to be high while the other is low."
     )
 
     # ── Encouragement banner ──
