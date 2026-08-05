@@ -1183,9 +1183,10 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = "", 
     # Background auto-save removed in favor of explicit user SAVE button on Dashboard
 
     # Initialize chat history with proactive greeting from Career Coach
+    from utils.weighted_scorer import STRONG_THRESHOLD, MODERATE_THRESHOLD
     score_result = st.session_state.get("weighted_score_result")
     score = score_result["final_score"] if score_result else analysis["match_percentage"]
-    verdict = score_result["verdict"] if score_result else ("Strong Match" if score >= 85 else "Moderate Match" if score >= 65 else "Weak Match")
+    verdict = score_result["verdict"] if score_result else ("Strong Match" if score >= STRONG_THRESHOLD else "Moderate Match" if score >= MODERATE_THRESHOLD else "Weak Match")
     role_title = analysis.get("role", target_role).replace("_", " ").title()
     missing_req = analysis.get("missing_required", [])
     missing_rec = analysis.get("missing_recommended", [])
@@ -1223,9 +1224,10 @@ def render_teaser_stage():
     score_result     = st.session_state.get("weighted_score_result")
     jd_text          = st.session_state.get("jd_text", "")
 
+    from utils.weighted_scorer import STRONG_THRESHOLD, MODERATE_THRESHOLD
     score   = score_result["final_score"] if score_result else analysis["match_percentage"]
-    verdict = score_result["verdict"]     if score_result else ("Strong Match" if score >= 85 else "Moderate Match" if score >= 65 else "Weak Match")
-    emoji   = score_result["verdict_emoji"] if score_result else ("🟢" if score >= 85 else "🟡" if score >= 65 else "🔴")
+    verdict = score_result["verdict"]     if score_result else ("Strong Match" if score >= STRONG_THRESHOLD else "Moderate Match" if score >= MODERATE_THRESHOLD else "Weak Match")
+    emoji   = score_result["verdict_emoji"] if score_result else ("🟢" if score >= STRONG_THRESHOLD else "🟡" if score >= MODERATE_THRESHOLD else "🔴")
 
     st.markdown("<div class='animate-in'>", unsafe_allow_html=True)
     st.markdown("## 🎯 Your Career Match Preview")
@@ -1235,7 +1237,11 @@ def render_teaser_stage():
     else:
         st.caption("📊 Scored against general market standards")
 
-    color = "#43E97B" if score >= 85 else "#ffa421" if score >= 65 else "#FF6584"
+    # Color must use the SAME thresholds as `verdict` above — these used to be two
+    # independently hardcoded threshold sets (85/65 here vs. weighted_scorer.py's
+    # 80/55), so a score of 55-64 would show "Moderate Match" text next to a red
+    # number, and 65-79 would show "Moderate Match" next to a green number.
+    color = "#43E97B" if score >= STRONG_THRESHOLD else "#ffa421" if score >= MODERATE_THRESHOLD else "#FF6584"
     st.markdown(f"""
     <div class="teaser-score animate-in animate-in-delay-1">
         <div class="score-number" style="-webkit-text-fill-color: {color}">{score:.0f}%</div>
@@ -1658,7 +1664,12 @@ def render_dashboard_stage():
         conf = prediction.get("confidence", 0)
 
     m1, m2, m3, m4 = st.columns(4)
-    color = "#43E97B" if score >= 85 else "#ffa421" if score >= 65 else "#FF6584"
+    # Must match the thresholds weighted_scorer.py used to pick `verdict` above (80/55),
+    # not a separately hardcoded set — otherwise the color and the "Moderate/Strong
+    # Match" label next to it disagree (e.g. a 55-64 score showing "Moderate Match" text
+    # next to a red number, since 65 was the old, unrelated color cutoff).
+    from utils.weighted_scorer import STRONG_THRESHOLD, MODERATE_THRESHOLD
+    color = "#43E97B" if score >= STRONG_THRESHOLD else "#ffa421" if score >= MODERATE_THRESHOLD else "#FF6584"
     with m1:
         st.markdown(f"""
         <div class="metric-card">

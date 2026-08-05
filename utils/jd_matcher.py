@@ -112,18 +112,28 @@ class JDMatcher:
  
         jd_sections = _split_into_sections(jd_text)
         resume_sections = _split_into_sections(resume_text)
- 
+
         section_scores: Dict[str, float] = {}
         missing_sections: List[str] = []
- 
+
+        # Only borrow the "other" bucket for a resume section that has no header match
+        # when the resume has NO recognizable headers anywhere — a fully unstructured
+        # resume, where comparing against the whole document is the best we can do.
+        # If the resume DOES have structure (at least one recognized header) but this
+        # ONE section genuinely wasn't found, backfilling it with unrelated leftover
+        # text (e.g. a contact-info line) would silently hide a real missing section
+        # and produce a meaningless comparison instead of flagging it in
+        # `missing_sections` — which the UI relies on to distinguish "add this section"
+        # from "this section exists, just reword it".
+        resume_has_any_section = any(resume_sections.get(s, "").strip() for s in SECTION_WEIGHTS)
+
         for sec in SECTION_WEIGHTS:
             jd_chunk = (jd_sections.get(sec, "") + " " + jd_sections.get("other", "")).strip()
             resume_chunk = resume_sections.get(sec, "").strip()
- 
-            if not resume_chunk:
-                # Try to pull from "other" as fallback
+
+            if not resume_chunk and not resume_has_any_section:
                 resume_chunk = resume_sections.get("other", "").strip()
- 
+
             if not resume_chunk or not jd_chunk:
                 section_scores[sec] = 0.0
                 missing_sections.append(sec)
