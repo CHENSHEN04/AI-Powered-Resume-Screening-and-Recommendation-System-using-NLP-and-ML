@@ -1242,9 +1242,11 @@ def render_teaser_stage():
     # 80/55), so a score of 55-64 would show "Moderate Match" text next to a red
     # number, and 65-79 would show "Moderate Match" next to a green number.
     color = "#43E97B" if score >= STRONG_THRESHOLD else "#ffa421" if score >= MODERATE_THRESHOLD else "#FF6584"
+    # Same gradient-clip cancellation as the dashboard's metric-value fix below — belt
+    # and suspenders so this doesn't silently regress to the fixed brand gradient again.
     st.markdown(f"""
     <div class="teaser-score animate-in animate-in-delay-1">
-        <div class="score-number" style="-webkit-text-fill-color: {color}">{score:.0f}%</div>
+        <div class="score-number" style="background: none; -webkit-background-clip: initial; background-clip: initial; -webkit-text-fill-color: {color}; color: {color};">{score:.0f}%</div>
         <div class="score-label">{emoji} <strong>{verdict}</strong> for <strong>{target_role.replace('_', ' ').title()}</strong></div>
     </div>
     """, unsafe_allow_html=True)
@@ -1671,9 +1673,16 @@ def render_dashboard_stage():
     from utils.weighted_scorer import STRONG_THRESHOLD, MODERATE_THRESHOLD
     color = "#43E97B" if score >= STRONG_THRESHOLD else "#ffa421" if score >= MODERATE_THRESHOLD else "#FF6584"
     with m1:
+        # .metric-value (assets/theme.css) paints its text via a fixed gradient using
+        # -webkit-text-fill-color: transparent + background-clip: text. A plain inline
+        # `color:` override doesn't touch that property, so in Chromium/WebKit browsers
+        # it never visually took effect — this number always showed the same static
+        # purple->pink gradient regardless of score. Explicitly cancel the gradient/clip
+        # and set -webkit-text-fill-color (not just color) so the dynamic score color
+        # actually renders.
         st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-value" style="color:{color}">{score:.0f}%</div>
+            <div class="metric-value" style="background: none; -webkit-background-clip: initial; background-clip: initial; -webkit-text-fill-color: {color}; color: {color};">{score:.0f}%</div>
             <div class="metric-label">{emoji} {verdict or "Match Score"}</div>
         </div>
         """, unsafe_allow_html=True)
