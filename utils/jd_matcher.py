@@ -13,7 +13,9 @@ import numpy as np
 import streamlit as st
 from typing import Dict, Tuple, List
 from sentence_transformers import SentenceTransformer
- 
+
+from utils.score_calibration import calibrate_similarity_score
+
 # Section weights per spec
 SECTION_WEIGHTS = {
     "skills":      0.35,
@@ -134,7 +136,12 @@ class JDMatcher:
             # A negative "match" percentage doesn't mean anything to the user, so we
             # floor every section score at 0% — no experience/skills overlap is the
             # worst case, not a penalty below zero.
-            section_scores[sec] = max(round(_cosine_similarity(jd_emb, res_emb) * 100, 1), 0.0)
+            raw_pct = max(round(_cosine_similarity(jd_emb, res_emb) * 100, 1), 0.0)
+            # Raw embedding cosine similarity isn't itself a calibrated 0-100 "match
+            # quality" percentage (see utils/score_calibration.py) — rescale it against
+            # empirical genuine-match/mismatch reference distributions so 🟢/🟡/🔴
+            # banding downstream is meaningful instead of near-permanently red.
+            section_scores[sec] = calibrate_similarity_score(raw_pct)
  
         # Weighted average
         overall = sum(
@@ -150,7 +157,13 @@ class JDMatcher:
         }
  
     def _fallback_score(self, jd_text: str, resume_text: str) -> Dict:
-        """TF-IDF cosine fallback when BERT model unavailable."""
+        """
+        TF-IDF cosine fallback when BERT model unavailable. NOT run through
+        calibrate_similarity_score() — that calibration was derived from
+        MiniLM embedding similarity specifically and doesn't transfer to
+        TF-IDF's very different score distribution. This path only engages
+        if the sentence-transformer model fails to load.
+        """
         from sklearn.feature_extraction.text import TfidfVectorizer
         from sklearn.metrics.pairwise import cosine_similarity
         try:

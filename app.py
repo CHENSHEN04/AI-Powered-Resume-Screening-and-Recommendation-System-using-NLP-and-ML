@@ -1077,29 +1077,50 @@ def _run_analysis_pipeline(file_bytes: bytes, filename: str, jd_text: str = "", 
     if jd_text and jd_match_result:
         progress.progress(75, text="⚖️ Computing weighted score...")
         try:
-            # Check if target role is in the standard classifier classes
-            known_classes = {
-                "accountant", "advocate", "agriculture", "banking", "business_analyst",
-                "data_science", "database", "devops_engineer", "electrical_engineering",
-                "hr", "information_technology", "java_developer", "mechanical_engineer",
-                "network_security_engineer", "operations_manager", "python_developer",
-                "react_developer", "sales", "testing", "web_designing"
-            }
+            # Check if target role has a trained classifier class — derived from the
+            # fitted encoder itself (not a hand-typed list) so this can't go stale as
+            # roles are added to market_standards.json.
+            from utils.classifier import get_known_role_slugs
+            known_classes = get_known_role_slugs()
             target_role_clean = target_role.lower().strip().replace(' ', '_')
             is_custom_role = target_role_clean not in known_classes
-            
-            # If it is a custom role, use the zero-shot BERT semantic match score
-            # as fallback for target accuracy so we don't penalize custom roles.
+
             if is_custom_role:
-                svm_conf = jd_match_result["overall_score"] / 100.0
+                # No trained SVM class exists for this role (a genuinely new/custom role
+                # the user typed in). Score how much this resume reads like a typical
+                # profile for THIS role using its own skill standards as an archetype
+                # description — a real, independent signal, not a copy of the Profile
+                # Alignment score above (which measures fit to this one JD's wording).
+                from utils.semantic_matcher import SemanticMatcher
+                archetype_skills = (
+                    analysis.get("required_skills", []) + analysis.get("recommended_skills", [])
+                )[:12]
+                role_title = analysis.get("title", target_role.replace('_', ' ').title())
+                archetype_text = (
+                    f"{role_title} professional skilled in {', '.join(archetype_skills)}"
+                    if archetype_skills else role_title
+                )
+                _, archetype_sim = SemanticMatcher().find_best_match(
+                    resume_text, {target_role_clean: archetype_text}
+                )
+                svm_conf = max(archetype_sim, 0.0)
             else:
                 svm_conf = prediction.get("confidence", 0.0)
+            st.session_state["svm_is_custom_role"] = is_custom_role
 
             from utils.weighted_scorer import compute_final_score
+            # NOTE: matched_skills/missing_skills here are the role-standards-based lists
+            # (required+recommended+nice_to_have[+advanced] for target_role, smart-matched
+            # against the resume) — the same lists the "X of Y skills matched" UI text uses.
+            # The skill-overlap denominator MUST come from that same list, not the raw
+            # jd_skills extraction (which pulls every skill-like term mentioned anywhere in
+            # the JD, often 2-3x larger) — otherwise the ratio's numerator and denominator
+            # describe two different skill universes and the displayed percentage no longer
+            # matches the "X of Y" count shown elsewhere.
             score_result = compute_final_score(
                 bert_score=jd_match_result["overall_score"],
                 matched_skills=matched_skills,
-                jd_skills=st.session_state.get("jd_skills", []),
+                jd_skills=matched_skills + missing_skills,
                 svm_confidence=svm_conf,
                 resume_text=resume_text,
                 jd_text=jd_text,
@@ -1310,7 +1331,8 @@ def render_teaser_stage():
 <span style="color: #ffa421;">🟡 Moderate &ge; 55%</span>
 <span style="color: #FF6584;">🔴 Weak &lt; 55%</span>
 </div>""", unsafe_allow_html=True)
-            st.caption("ℹ️ **What is Industry Target Accuracy?** It measures how focused your resume's overall vocabulary is on your target job domain. For custom roles, this is dynamically calculated using zero-shot semantic matching against the Job Description to ensure custom roles are not penalized.")
+            st.caption("ℹ️ **What is Industry Target Accuracy?** For roles our classifier was trained on, it measures how confidently that model recognizes your resume as a typical fit for the role. For roles it wasn't trained on (custom/new roles), it instead measures semantic similarity between your resume and that role's own required-skill profile — a real, independent signal either way, not a copy of your Profile Alignment score above.")
+            st.caption("ℹ️ **What is Academic Background Alignment?** This is a simple rule-based check — does your highest stated degree meet or exceed the degree level the JD asks for? It's a different measurement from the **Education** bar in the Section-Level Alignment Scores below, which instead compares the *wording* of your Education section against the JD's using AI semantic similarity. It's normal for these two to disagree — one checks your credential level, the other checks phrasing.")
 
     # Quick Stats
     st.markdown("<br>", unsafe_allow_html=True)
@@ -1626,7 +1648,14 @@ def render_dashboard_stage():
     score   = score_result["final_score"] if score_result else analysis["match_percentage"]
     verdict = score_result["verdict"]     if score_result else ""
     emoji   = score_result["verdict_emoji"] if score_result else ""
-    conf    = prediction.get("confidence", 0)
+    # Use the same svm_confidence value that actually fed the weighted score (which for
+    # custom/untrained roles is a role-archetype similarity, not the raw classifier
+    # output) — not the raw prediction — so this quick-stat can't show a different
+    # number than the "Role Classifier Confidence" row in the score breakdown below.
+    if score_result:
+        conf = score_result.get("component_scores", {}).get("svm_confidence", 0) / 10.0
+    else:
+        conf = prediction.get("confidence", 0)
 
     m1, m2, m3, m4 = st.columns(4)
     color = "#43E97B" if score >= 85 else "#ffa421" if score >= 65 else "#FF6584"
@@ -1655,15 +1684,21 @@ def render_dashboard_stage():
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-value">{conf*100:.0f}%</div>
-            <div class="metric-label">SVM Confidence</div>
+            <div class="metric-label">Role Classifier Confidence</div>
         </div>
         """, unsafe_allow_html=True)
 
+    _svm_caption_subject = (
+        "how closely your resume's skills match this role's own skill profile (no trained "
+        "classifier category exists for this role)"
+        if st.session_state.get("svm_is_custom_role", False) else
+        "how sure our AI classifier is that your resume reads as a *typical* profile for "
+        "this exact job category"
+    )
     st.caption(
-        "🛈 **Match Score** is your overall fit for this role (full breakdown below). "
-        "**SVM Confidence** is a separate, smaller signal — how sure our AI classifier is "
-        "that your resume reads as a *typical* profile for this exact job category. It's "
-        "completely normal for this number to be low, even near 0%, if you're early-career, "
+        f"🛈 **Match Score** is your overall fit for this role (full breakdown below). "
+        f"**Role Classifier Confidence** is a separate, smaller signal — {_svm_caption_subject}. "
+        "It's completely normal for this number to be low, even near 0%, if you're early-career, "
         "self-taught, or coming from a different field — it only makes up 10% of your Match "
         "Score, so it won't sink an otherwise strong application on its own."
     )
@@ -1724,12 +1759,14 @@ def render_dashboard_stage():
             skill_reason = f"You matched only {n_matched} of {n_total_skills} listed skills. Most of these gaps are learnable — see the Learning Plan tab for where to start. 🔴"
 
         role_display_name = target_role.replace("_", " ").title() if target_role else "this role"
+        is_custom_svm = st.session_state.get("svm_is_custom_role", False)
+        model_desc = "this role's typical skill profile" if is_custom_svm else "our classifier's training data"
         if svm_val >= 60:
             svm_reason = f"Your resume reads as a strong statistical match for a typical **{role_display_name}** profile. 🟢"
         elif svm_val >= 25:
             svm_reason = f"Your resume partially resembles a typical **{role_display_name}** profile, but has some non-standard elements. 🟡"
         else:
-            svm_reason = f"Your resume doesn't closely resemble the *typical* **{role_display_name}** resume our model was trained on — very common for students, self-taught, and career-switching candidates. It's not a judgment of your skill, and it's only 10% of your score. 🔴"
+            svm_reason = f"Your resume doesn't closely resemble the *typical* **{role_display_name}** profile based on {model_desc} — very common for students, self-taught, and career-switching candidates. It's not a judgment of your skill, and it's only 10% of your score. 🔴"
 
         if edu_val >= 90:
             edu_reason = "Your listed education meets (or the job description didn't strictly require a specific level for) what's expected. 🟢"
@@ -1810,19 +1847,14 @@ def render_dashboard_stage():
 </li>""")
             
         if svm_val < 80:
-            known_classes = {
-                "accountant", "advocate", "agriculture", "banking", "business_analyst",
-                "data_science", "database", "devops_engineer", "electrical_engineering",
-                "hr", "information_technology", "java_developer", "mechanical_engineer",
-                "network_security_engineer", "operations_manager", "python_developer",
-                "react_developer", "sales", "testing", "web_designing"
-            }
-            target_role_clean = target_role.lower().strip().replace(' ', '_')
-            is_custom = target_role_clean not in known_classes
-            
+            # Reuse the flag computed once in _run_analysis_pipeline (from the trained
+            # classifier's actual class list) instead of re-deriving a second, easily
+            # stale copy of the same check here.
+            is_custom = st.session_state.get("svm_is_custom_role", False)
+
             if is_custom:
-                why_low = "Your resume does not demonstrate a strong enough semantic focus on the context of this custom job description."
-                core_action = "Align the vocabulary, highlights, and toolsets of your accomplishments directly with the unique phrasing, responsibilities, and methodologies described in the Job Description. (Note: Custom roles utilize zero-shot semantic matching instead of the static classifier)."
+                why_low = "There's no trained classifier category for this specific role, so this score instead reflects how closely your resume's overall skills/wording match a typical profile for this role."
+                core_action = "Make sure your resume's skills and experience descriptions clearly reflect the core skills for this role (see the Skill Gaps tab) — this score is a zero-shot match against this role's skill profile, not the specific JD wording."
             else:
                 why_low = "Your overall profile reads too broadly or matches multiple professional categories, dropping classifier confidence for your target role."
                 core_action = f"Open your resume with a clear <span style=\"color: #6C63FF; font-weight: 700;\">professional summary header</span> containing your target job title (e.g., <em>\"{target_role.replace('_', ' ').title()} with 2+ years of experience...\"</em>). Focus your experience descriptions purely on tasks specific to this professional domain."
@@ -1836,11 +1868,26 @@ def render_dashboard_stage():
 </li>""")
             
         if edu_val < 80:
+            # _education_score() in weighted_scorer.py has three distinct failure modes
+            # that land in three different edu_val ranges — a single static explanation
+            # covering the whole <80 range was wrong for 2 of the 3 (e.g. telling someone
+            # with a real, clearly-labeled Bachelor's degree to "add a degree label" when
+            # their actual gap is that the JD wants a Master's).
+            if edu_val >= 45:
+                edu_why = "Your highest listed education is one level below what this job description typically expects (e.g. a Bachelor's where the posting leans toward a Master's). This is a real credential gap, not a formatting issue — adding a label won't change it."
+                edu_action = "If you're pursuing further study, mention it (e.g. <em>\"expected 2027\"</em>). Otherwise this is usually a minor factor — lean on your <span style=\"color: #6C63FF; font-weight: 700;\">Skills and Experience</span> sections to offset it."
+            elif edu_val >= 25:
+                edu_why = "We couldn't clearly detect a degree level (e.g. Bachelor's, Master's, Diploma) anywhere in your resume text."
+                edu_action = f"Clearly state your <span style=\"color: #6C63FF; font-weight: 700;\">degree name and field of study</span> in your education section (e.g., <em>\"B.S. in Computer Science\"</em>), matching conventional academic naming."
+            else:
+                edu_why = "Your detected education level is below what this job description typically expects."
+                edu_action = "Highlight relevant certifications, bootcamps, or coursework that demonstrate equivalent preparation, and lean on your Experience/Projects sections to offset the formal credential gap."
+
             roadmap_items.append(f"""<li style="margin-bottom: 0;">
 <div style="font-weight: 700; color: #FAFAFA; font-size: 1.1rem; margin-bottom: 0.3rem;">🎓 4. Boost Academic Background Alignment (Current Score: {edu_val:.1f}% | 10% weight)</div>
 <div style="color: #D1D1D6; font-size: 0.95rem; line-height: 1.55; margin-left: 1.5rem;">
-<strong>Why it is low:</strong> Your educational field (major or degree title) is missing or parsed differently than standard major profiles.
-<br><span style="color: #43E97B; font-weight: 600;">💡 Core Action:</span> Clearly define your <span style="color: #6C63FF; font-weight: 700;">degree name and field of study</span> under your education section (e.g., <em>"B.S. in Computer Science"</em> or <em>"M.S. in Business Analytics"</em>), matching conventional academic naming.
+<strong>Why it is low:</strong> {edu_why}
+<br><span style="color: #43E97B; font-weight: 600;">💡 Core Action:</span> {edu_action}
 </div>
 </li>""")
             
@@ -1883,16 +1930,37 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
                 "JD is written for someone with several years on the job — that gap closes "
                 "naturally as you gain experience, and doesn't mean you shouldn't apply now."
             )
+            st.caption(
+                "🛈 **Why the percentage isn't raw model output:** the underlying AI language "
+                "model's raw similarity score doesn't naturally span 0-100% in a meaningful way — "
+                "even a genuinely perfect resume-to-job match rarely scores much above 50-55% raw, "
+                "because two differently-worded pieces of text (bullet points vs. JD prose) rarely "
+                "look identical to the model even when they mean the same thing. We calibrate the "
+                "raw score against ~2,500 labeled true-match/mismatch resume pairs so that the "
+                "displayed percentage — and the 🟢/🟡/🔴 bands — behave the way you'd expect: high "
+                "for genuine matches, low for genuine mismatches. See scripts/calibrate_score_thresholds.py "
+                "for the full methodology."
+            )
 
             section_scores = jd_match["section_scores"]
+            missing_sections_set = set(jd_match.get("missing_sections", []))
 
-            # Short, concrete fix for each section — shown only where it's actually needed,
-            # so this reads as a checklist instead of another number with no next step.
-            section_tips = {
-                "skills": "List the exact skill names from the posting (not just synonyms) in a dedicated Skills section.",
-                "experience": "Rework 2–3 bullet points using the JD's own action verbs and terms — e.g. if it says \"led\", don't write \"helped with\".",
+            # Two tip sets per section, chosen by whether the section was actually
+            # found in the resume (jd_matcher.missing_sections). A low score with the
+            # section PRESENT means the wording differs from the JD, not that the
+            # section/label/content is missing — showing the "add it" tip in that case
+            # would flatly contradict a resume that already has it.
+            section_tips_missing = {
+                "skills": "Add a dedicated Skills section listing the exact skill names from the posting.",
+                "experience": "Add a clearly labeled Experience/Work History section — we couldn't detect one in your resume.",
                 "education": "Add a clearly labeled Education heading near the top with your degree, major, and institution.",
-                "summary": "Open with a 2–3 sentence summary that echoes the job title and the JD's top 1–2 requirements.",
+                "summary": "Add a short Summary/Objective section near the top of your resume.",
+            }
+            section_tips_present = {
+                "skills": "This section exists, but its wording differs from the posting — mirror the posting's exact skill names, not just synonyms.",
+                "experience": "This section exists — the low score usually means your bullets are phrased differently than the JD, not that content is missing. Echo a few of the JD's own terms where accurate.",
+                "education": "This section exists — the low score usually just reflects different wording than the JD (e.g. degree name vs. field of study), not a missing label.",
+                "summary": "This section exists — try echoing the job title and the JD's top 1–2 requirements more directly.",
             }
 
             # Draw beautiful custom HTML bar chart
@@ -1917,7 +1985,11 @@ Your resume is highly optimized and demonstrates exceptionally strong alignment 
                 g_val = int(color[3:5], 16)
                 b_val = int(color[5:7], 16)
 
-                tip = section_tips.get(str(sec).lower().strip(), "")
+                sec_key = str(sec).lower().strip()
+                if sec_key in missing_sections_set:
+                    tip = section_tips_missing.get(sec_key, "")
+                else:
+                    tip = section_tips_present.get(sec_key, "")
                 tip_html = (
                     f"""<span style="color: #A1A1AA; font-size: 0.78rem; margin-top: 4px; text-align: center; line-height: 1.3; display: block;">💡 {tip}</span>"""
                     if val < 80 and tip else ""

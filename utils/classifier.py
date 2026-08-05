@@ -53,6 +53,27 @@ CLF_MODEL_PATH = MODELS_DIR / "clf.joblib"
 TFIDF_MODEL_PATH = MODELS_DIR / "tfidf.joblib"
 ENCODER_MODEL_PATH = MODELS_DIR / "encoder.joblib"
 
+
+@st.cache_resource
+def get_known_role_slugs() -> set:
+    """
+    Role slugs (e.g. "devops", "human_resources") the trained TF-IDF+SVM
+    classifier actually has a class for — derived from the fitted label
+    encoder itself rather than a hand-typed list, so it can't silently go
+    stale as roles are added/renamed in market_standards.json. Any role NOT
+    in this set has no trained class and is handled as a "custom role".
+    """
+    try:
+        if not ENCODER_MODEL_PATH.exists():
+            return set()
+        encoder = joblib.load(ENCODER_MODEL_PATH)
+        return {str(c).lower().strip().replace(" ", "_") for c in encoder.classes_}
+    except Exception as e:
+        log_error(get_error(ErrorCode.SVM_MODEL_ERROR),
+                 {"context": "Loading encoder classes", "error": str(e)})
+        return set()
+
+
 # ==============================================================================
 # Job Classifier Class
 # ==============================================================================
